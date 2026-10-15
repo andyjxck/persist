@@ -1,4 +1,6 @@
 import 'calm_round.dart';
+import 'desktop_rounds.dart';
+import 'touch_rounds.dart';
 import 'fake_rounds.dart';
 import 'liar_rounds.dart';
 import 'memory_rounds.dart';
@@ -24,6 +26,19 @@ const List<RoundType> allRoundTypes = [
   FlashSequenceType(),
   FakeLoadingType(),
   FakeWinType(),
+];
+
+/// Rounds only the web/desktop version draws (cursor, keyboard, wide stage).
+const List<RoundType> desktopRoundTypes = [ChaseType(), KeyTrapType(), HoverHoldType(), MagnetType(), GridType()];
+
+/// Rounds only the mobile version draws (flicks, two thumbs, rubbing).
+const List<RoundType> touchRoundTypes = [FlickType(), BothThumbsType(), ScratchType()];
+
+/// The full pool for one version of the game. Shared rounds come first, in
+/// their original order, so each version's Daily stays stable.
+List<RoundType> roundTypesFor(PlayPlatform platform) => [
+  ...allRoundTypes,
+  ...(platform == PlayPlatform.desktop ? desktopRoundTypes : touchRoundTypes),
 ];
 
 /// Used by the engine for suspiciously calm rounds.

@@ -1,33 +1,66 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../game/button_panic_game.dart';
 import '../logic/run_engine.dart';
+import 'theme.dart';
+import 'widgets.dart';
 
 /// The game-over screen. The surprise TRY AGAIN shows this exact screen for
-/// half a second first, so it must not look any different: the buttons just
+/// a moment first, so it must not look any different: the buttons just
 /// don't respond while the game is in its fake phase.
-class GameOverOverlay extends StatelessWidget {
+class GameOverOverlay extends StatefulWidget {
   const GameOverOverlay({super.key, required this.game});
   final ButtonPanicGame game;
 
-  bool get _live => game.phase == GamePhase.gameOver;
+  @override
+  State<GameOverOverlay> createState() => _GameOverOverlayState();
+}
 
-  Future<void> _share(BuildContext context, RunResult result) async {
+class _GameOverOverlayState extends State<GameOverOverlay> with SingleTickerProviderStateMixin {
+  ButtonPanicGame get game => widget.game;
+  bool get _live => game.phase == GamePhase.gameOver;
+  bool _copied = false;
+
+  late final AnimationController _in = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))..forward();
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  Future<void> _share(RunResult result) async {
     final text = result.shareText;
     var shared = false;
-    try {
-      final r = await SharePlus.instance.share(ShareParams(text: text));
-      shared = r.status != ShareResultStatus.unavailable;
-    } catch (_) {}
-    if (!shared || kIsWeb) {
-      await Clipboard.setData(ClipboardData(text: text));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Result copied. Paste it anywhere.')));
-      }
+    if (!kIsWeb) {
+      try {
+        final r = await SharePlus.instance.share(ShareParams(text: text));
+        shared = r.status != ShareResultStatus.unavailable;
+      } catch (_) {}
     }
+    if (!shared) {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!mounted) return;
+      setState(() => _copied = true);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _copied = false);
+      });
+    }
+  }
+
+  Widget _rise(double from, double to, Widget child) {
+    final anim = CurvedAnimation(parent: _in, curve: Interval(from, to, curve: Curves.easeOutCubic));
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (context, c) => Opacity(
+        opacity: anim.value,
+        child: Transform.translate(offset: Offset(0, (1 - anim.value) * 18), child: c),
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -35,88 +68,120 @@ class GameOverOverlay extends StatelessWidget {
     final result = game.lastResult;
     if (result == null) return const SizedBox.shrink();
     final daily = result.mode == GameMode.daily;
+    final wide = game.wide;
+    final status = result.isNewBest
+        ? 'NEW BEST'
+        : result.practice
+        ? 'PRACTICE · NOT SAVED'
+        : daily
+        ? 'DAILY · ${prettyDate(result.date).toUpperCase()} · BEST ${result.best}'
+        : 'ENDLESS · BEST ${result.best}';
+
+    final actions = [
+      TactileButton(
+        key: const Key('againButton'),
+        label: 'PLAY AGAIN',
+        trailing: wide ? null : '\u21bb',
+        height: 64,
+        onTap: () => _live ? game.startRun(result.mode) : null,
+      ),
+      TactileButton(
+        key: const Key('shareButton'),
+        label: _copied ? 'COPIED' : (kIsWeb ? 'COPY RESULT' : 'SHARE RESULT'),
+        color: const Color(0x00000000),
+        height: 56,
+        onTap: () => _live ? _share(result) : null,
+      ),
+    ];
+
     return Container(
-      color: const Color(0xF2111117),
-      alignment: Alignment.center,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'GAME OVER',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: 3, color: Color(0xFFFF5252)),
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(0, -0.3),
+          radius: 1.1,
+          colors: [const Color(0xF21A0C12), BP.ink.withValues(alpha: 0.97)],
+        ),
+      ),
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(BP.s5),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: wide ? 560 : 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _rise(0, 0.5, Text('GAME OVER', textAlign: TextAlign.center, style: BP.label(13, color: BP.signal))),
+                  const SizedBox(height: BP.s3),
+                  _rise(
+                    0.05,
+                    0.55,
+                    Text(result.reason, textAlign: TextAlign.center, style: BP.d(wide ? 26 : 22, weight: FontWeight.w600, height: 1.2)),
+                  ),
+                  const SizedBox(height: BP.s6),
+                  _rise(
+                    0.15,
+                    0.75,
+                    Text('${result.score}', textAlign: TextAlign.center, style: BP.d(wide ? 128 : 112, height: 0.9, spacing: -4)),
+                  ),
+                  const SizedBox(height: BP.s2),
+                  _rise(
+                    0.2,
+                    0.8,
+                    Text(result.score == 1 ? 'ROUND SURVIVED' : 'ROUNDS SURVIVED', textAlign: TextAlign.center, style: BP.label(12)),
+                  ),
+                  const SizedBox(height: BP.s4),
+                  _rise(
+                    0.25,
+                    0.85,
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: result.isNewBest ? BP.amber.withValues(alpha: 0.14) : BP.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: result.isNewBest ? BP.amber : BP.line),
+                        ),
+                        child: Text(status, style: BP.label(10.5, color: result.isNewBest ? BP.amber : BP.muted)),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: wide ? BP.s7 : BP.s7 + BP.s4),
+                  _rise(
+                    0.35,
+                    1,
+                    wide
+                        ? Row(
+                            children: [
+                              Expanded(child: actions[0]),
+                              const SizedBox(width: BP.s3),
+                              Expanded(child: actions[1]),
+                            ],
+                          )
+                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [actions[0], const SizedBox(height: BP.s3), actions[1]]),
+                  ),
+                  const SizedBox(height: BP.s4),
+                  _rise(
+                    0.4,
+                    1,
+                    Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _live ? game.backToMenu() : null,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Padding(
+                            padding: const EdgeInsets.all(BP.s3),
+                            child: Text(wide ? 'Back to menu  (Esc)' : 'Back to menu', style: BP.t(14, color: BP.muted, weight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                result.reason,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 17, color: Colors.white70, height: 1.3),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                '${result.score}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 96, fontWeight: FontWeight.w900, height: 1),
-              ),
-              Text(
-                result.score == 1 ? 'ROUND SURVIVED' : 'ROUNDS SURVIVED',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14, letterSpacing: 2, color: Colors.white60),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                result.isNewBest
-                    ? 'New best!'
-                    : result.practice
-                    ? 'Practice run \u00b7 not saved'
-                    : daily
-                    ? 'Daily \u00b7 ${prettyDate(result.date)} \u00b7 best today ${result.best}'
-                    : 'Endless \u00b7 best ${result.best}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: result.isNewBest ? const Color(0xFFFFD740) : Colors.white54,
-                  fontWeight: result.isNewBest ? FontWeight.w800 : FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 32),
-              FilledButton.icon(
-                key: const Key('shareButton'),
-                onPressed: () => _live ? _share(context, result) : null,
-                icon: const Icon(Icons.ios_share),
-                label: const Text('SHARE RESULT'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF43A047),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 1),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(
-                key: const Key('againButton'),
-                onPressed: () => _live ? game.startRun(result.mode) : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE53935),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 1),
-                ),
-                child: const Text('PLAY AGAIN'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () => _live ? game.backToMenu() : null,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Colors.white24),
-                ),
-                child: const Text('MENU', style: TextStyle(color: Colors.white70, letterSpacing: 1)),
-              ),
-            ],
+            ),
           ),
         ),
       ),

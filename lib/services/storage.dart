@@ -67,6 +67,10 @@ class ScoreStore {
   bool get soundOn => _prefs.getBool(_soundOn) ?? true;
   Future<void> setSoundOn(bool v) => _prefs.setBool(_soundOn, v);
 
+  /// How many runs have been started on this device.
+  int get runsPlayed => _prefs.getInt('runs_played') ?? 0;
+  Future<void> countRun() => _prefs.setInt('runs_played', runsPlayed + 1);
+
   bool get hapticsOn => _prefs.getBool(_hapticsOn) ?? true;
   Future<void> setHapticsOn(bool v) => _prefs.setBool(_hapticsOn, v);
 }

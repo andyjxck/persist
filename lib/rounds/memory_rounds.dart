@@ -56,6 +56,8 @@ class RoundsAgoRound extends Round {
   double get baseTime => 3.6;
   @override
   GameColour get rememberedColour => answer;
+  @override
+  bool get allowInvert => false;
 
   @override
   void onPressDown(String? targetId) {

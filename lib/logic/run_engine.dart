@@ -13,14 +13,35 @@ enum LossOutcome { gameOver, tryAgain }
 /// Everything is derived from [seed] and the round number, so a Daily run
 /// plays out the same for everyone.
 class RunEngine {
-  RunEngine({required this.mode, required this.seed, List<RoundType>? types, this.retryChance = Difficulty.retryChance})
-    : types = types ?? allRoundTypes;
+  RunEngine({
+    required this.mode,
+    required this.seed,
+    List<RoundType>? types,
+    this.retryChance = Difficulty.retryChance,
+    this.platform = PlayPlatform.touch,
+  }) : types = types ?? allRoundTypes;
 
-  /// A Daily run for [date] (local calendar day).
-  factory RunEngine.daily(DateTime date) => RunEngine(mode: GameMode.daily, seed: dailySeed(date));
+  /// A Daily run for [date] (local calendar day). Each version of the game
+  /// has its own Daily: same for every player on that version.
+  factory RunEngine.daily(DateTime date, {PlayPlatform platform = PlayPlatform.touch}) => RunEngine(
+    mode: GameMode.daily,
+    seed: platformDailySeed(date, platform),
+    types: roundTypesFor(platform),
+    platform: platform,
+  );
 
   /// An Endless run with a fresh random seed.
-  factory RunEngine.endless(int seed) => RunEngine(mode: GameMode.endless, seed: seed);
+  factory RunEngine.endless(int seed, {PlayPlatform platform = PlayPlatform.touch}) =>
+      RunEngine(mode: GameMode.endless, seed: seed, types: roundTypesFor(platform), platform: platform);
+
+  static int platformDailySeed(DateTime date, PlayPlatform platform) =>
+      platform == PlayPlatform.touch ? dailySeed(date) : (dailySeed(date) ^ hashString('desktop')) & 0xffffffff;
+
+  final PlayPlatform platform;
+
+  /// Play-area width / height, set by the game before each round (geometry
+  /// only; it never changes which round comes next).
+  double aspect = 0.75;
 
   final GameMode mode;
   final int seed;
@@ -82,6 +103,8 @@ class RunEngine {
       rng: SeededRng.derive(seed, [roundIndex, 'round', type.id]),
       history: List.unmodifiable(history),
       timerFactor: timerFactorFor(roundIndex, retries: retries),
+      platform: platform,
+      aspect: aspect,
     );
     return type.create(ctx);
   }

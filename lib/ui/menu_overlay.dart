@@ -1,8 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import '../game/button_panic_game.dart';
 import '../logic/run_engine.dart';
+import 'theme.dart';
+import 'widgets.dart';
 
+/// The start screen. On phones it's a full-screen title with the actions in
+/// thumb reach at the bottom; on the web it sits inside the stage on the page.
 class MenuOverlay extends StatefulWidget {
   const MenuOverlay({super.key, required this.game});
   final ButtonPanicGame game;
@@ -11,143 +15,184 @@ class MenuOverlay extends StatefulWidget {
   State<MenuOverlay> createState() => _MenuOverlayState();
 }
 
-class _MenuOverlayState extends State<MenuOverlay> {
+class _MenuOverlayState extends State<MenuOverlay> with SingleTickerProviderStateMixin {
   ButtonPanicGame get game => widget.game;
+  late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))..repeat();
 
   @override
-  Widget build(BuildContext context) {
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  void _start(GameMode mode) => game.startRun(mode);
+
+  @override
+  Widget build(BuildContext context) => game.wide ? _stage(context) : _phone(context);
+
+  String _dailySub() {
     final today = game.clock();
     final daily = game.store.dailyFor(today);
+    return daily == null ? '${prettyDate(today)} · same rounds for everyone' : 'Today: ${daily.firstScore} · best ${daily.bestScore}';
+  }
+
+  String _endlessSub() {
     final best = game.store.bestEndless;
-    return Container(
-      color: const Color(0xFF111117),
-      alignment: Alignment.center,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'BUTTON\nPANIC',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 56, height: 0.95, fontWeight: FontWeight.w900, letterSpacing: 2),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'working title',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.white38, letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Do what it says. One wrong move and it\'s over.\nIt gets faster. And stranger.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.white70, height: 1.4),
-              ),
-              const SizedBox(height: 32),
-              _BigButton(
-                key: const Key('dailyButton'),
-                label: 'DAILY RUN',
-                sub: daily == null
-                    ? '${prettyDate(today)} \u00b7 same rounds for everyone'
-                    : 'Today: ${daily.firstScore} rounds \u00b7 best ${daily.bestScore}',
-                color: const Color(0xFFE53935),
-                onTap: () => game.startRun(GameMode.daily),
-              ),
-              const SizedBox(height: 14),
-              _BigButton(
-                key: const Key('endlessButton'),
-                label: 'ENDLESS',
-                sub: best == 0 ? 'New round types unlock as you go' : 'Best: $best rounds',
-                color: const Color(0xFF1E88E5),
-                onTap: () => game.startRun(GameMode.endless),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+    return best > 0 ? 'Your best: $best rounds' : 'As long as you last';
+  }
+
+  Widget _animatedRing(double size) => AnimatedBuilder(
+    animation: _spin,
+    builder: (context, _) {
+      final f = 1 - _spin.value;
+      final c = f > 0.5 ? BP.paper : (f > 0.25 ? BP.amber : BP.signal);
+      return RingGlyph(size: size, fraction: f, color: c);
+    },
+  );
+
+  // --- Phone -----------------------------------------------------------------
+
+  Widget _phone(BuildContext context) {
+    return ColoredBox(
+      color: BP.ink,
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(BP.s5, BP.s3, BP.s5, BP.s5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _Toggle(
-                    icon: game.audio.enabled ? Icons.volume_up : Icons.volume_off,
-                    label: 'Sound',
-                    on: game.audio.enabled,
-                    onTap: () => setState(() => game.setSound(!game.audio.enabled)),
+                  Row(
+                    children: [
+                      Text('v1.0', style: BP.label(10, color: BP.faint)),
+                      const Spacer(),
+                      IconPill(
+                        semantic: 'Vibration',
+                        painter: VibratePainter(game.haptics.enabled),
+                        onTap: () => setState(() => game.setHaptics(!game.haptics.enabled)),
+                      ),
+                      const SizedBox(width: BP.s2),
+                      IconPill(
+                        semantic: 'Sound',
+                        painter: SpeakerPainter(game.audio.enabled),
+                        onTap: () => setState(() => game.setSound(!game.audio.enabled)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _Toggle(
-                    icon: Icons.vibration,
-                    label: 'Vibration',
-                    on: game.haptics.enabled,
-                    onTap: () => setState(() => game.setHaptics(!game.haptics.enabled)),
+                  const Spacer(flex: 3),
+                  Center(child: _animatedRing(112)),
+                  const SizedBox(height: BP.s6),
+                  const Wordmark(size: 54),
+                  const SizedBox(height: BP.s4),
+                  Text(
+                    'Do what it says. One wrong move and it\'s over.\nIt gets faster. And stranger.',
+                    textAlign: TextAlign.center,
+                    style: BP.t(15.5, color: BP.muted),
+                  ),
+                  const Spacer(flex: 4),
+                  TactileButton(
+                    key: const Key('dailyButton'),
+                    label: 'DAILY RUN',
+                    sub: _dailySub(),
+                    trailing: '\u2192',
+                    height: 72,
+                    onTap: () => _start(GameMode.daily),
+                  ),
+                  const SizedBox(height: BP.s3),
+                  TactileButton(
+                    key: const Key('endlessButton'),
+                    label: 'ENDLESS',
+                    sub: _endlessSub(),
+                    trailing: '\u2192',
+                    color: const Color(0x00000000),
+                    height: 64,
+                    onTap: () => _start(GameMode.endless),
+                  ),
+                  const SizedBox(height: BP.s4),
+                  Text(
+                    'Sound on. Thumbs ready.',
+                    textAlign: TextAlign.center,
+                    style: BP.label(10, color: BP.faint),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
-}
 
-class _BigButton extends StatelessWidget {
-  const _BigButton({super.key, required this.label, required this.sub, required this.color, required this.onTap});
-  final String label;
-  final String sub;
-  final Color color;
-  final VoidCallback onTap;
+  // --- Web stage -------------------------------------------------------------
 
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-          child: Column(
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                  color: Colors.white,
+  Widget _stage(BuildContext context) {
+    return Container(
+      color: BP.ink.withValues(alpha: 0.9),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(BP.s6),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _animatedRing(96),
+            const SizedBox(height: BP.s5),
+            Text('READY WHEN YOU ARE', style: BP.label(12, color: BP.signal)),
+            const SizedBox(height: BP.s3),
+            Text('Do what it says.', textAlign: TextAlign.center, style: BP.d(44, spacing: -0.5)),
+            const SizedBox(height: BP.s3),
+            Text(
+              'Read the instruction, beat the ring around the button. Every round is different.',
+              textAlign: TextAlign.center,
+              style: BP.t(16, color: BP.muted),
+            ),
+            const SizedBox(height: BP.s6),
+            Row(
+              children: [
+                Expanded(
+                  child: TactileButton(
+                    key: const Key('dailyButton'),
+                    label: 'DAILY RUN',
+                    sub: _dailySub(),
+                    height: 70,
+                    onTap: () => _start(GameMode.daily),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                sub,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.white70),
-              ),
-            ],
-          ),
+                const SizedBox(width: BP.s4),
+                Expanded(
+                  child: TactileButton(
+                    key: const Key('endlessButton'),
+                    label: 'ENDLESS',
+                    sub: _endlessSub(),
+                    color: const Color(0x00000000),
+                    height: 70,
+                    onTap: () => _start(GameMode.endless),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: BP.s5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Kbd('Space'),
+                const SizedBox(width: 8),
+                Text('Daily', style: BP.t(13, color: BP.muted)),
+                const SizedBox(width: 20),
+                const Kbd('E'),
+                const SizedBox(width: 8),
+                Text('Endless', style: BP.t(13, color: BP.muted)),
+                const SizedBox(width: 20),
+                const Kbd('M'),
+                const SizedBox(width: 8),
+                Text('Mute', style: BP.t(13, color: BP.muted)),
+              ],
+            ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _Toggle extends StatelessWidget {
-  const _Toggle({required this.icon, required this.label, required this.on, required this.onTap});
-  final IconData icon;
-  final String label;
-  final bool on;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 18, color: on ? Colors.white : Colors.white38),
-      label: Text('$label ${on ? 'on' : 'off'}', style: TextStyle(color: on ? Colors.white : Colors.white38)),
-      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24)),
     );
   }
 }

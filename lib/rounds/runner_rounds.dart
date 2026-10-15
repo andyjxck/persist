@@ -129,8 +129,6 @@ class ShrinkerRound extends Round {
   List<GameButton> get buttons => [button];
   @override
   double get baseTime => 2.6;
-  @override
-  bool get showTimer => false; // the button IS the timer
 
   @override
   void tick(double dt) {

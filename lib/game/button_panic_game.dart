@@ -12,7 +12,7 @@ import '../services/feedback.dart';
 import '../services/storage.dart';
 import 'arena_component.dart';
 
-enum GamePhase { menu, playing, roundWon, fakeGameOver, gameOver }
+enum GamePhase { menu, playing, roundWon, failing, fakeGameOver, gameOver }
 
 /// Hidden options for the web link, for previews and screen recordings:
 ///   ?from=20   start Endless at round 20 (practice: scores aren't saved)
@@ -95,7 +95,33 @@ class ButtonPanicGame extends FlameGame {
   final GameAudio audio = GameAudio();
   final GameHaptics haptics = GameHaptics();
 
-  GamePhase phase = GamePhase.menu;
+  GamePhase _phase = GamePhase.menu;
+  GamePhase get phase => _phase;
+  set phase(GamePhase p) {
+    _phase = p;
+    revision.value++;
+  }
+
+  /// Bumps whenever the phase changes, so page widgets (scores, stage menu)
+  /// can rebuild.
+  final ValueNotifier<int> revision = ValueNotifier(0);
+
+  /// True while the mouse is over a pressable button (for the cursor).
+  final ValueNotifier<bool> overButton = ValueNotifier(false);
+
+  /// Which layout the shell is showing: the wide web stage or the phone
+  /// screen. A run keeps the platform it started with.
+  bool wide = false;
+  PlayPlatform get layoutPlatform => wide ? PlayPlatform.desktop : PlayPlatform.touch;
+
+  /// Mouse position over the game (null when it's elsewhere).
+  Offset? hoverScreen;
+
+  /// Fail shake: decays, and the offset grows with its square.
+  double trauma = 0;
+
+  String? _lastPressedId;
+  double _tickTimer = 0;
   RunEngine? engine;
   Round? round;
   ChaosState chaos = ChaosState.none;
@@ -105,6 +131,7 @@ class ButtonPanicGame extends FlameGame {
   String banner = '';
   String bannerSub = '';
   double bannerTime = 0;
+  double bannerDuration = 1;
   bool bannerIsAlarm = false;
 
   /// Chaos state the arena reads when drawing.
@@ -113,7 +140,7 @@ class ButtonPanicGame extends FlameGame {
   double flashInvert = 0; // brief full-screen invert flash on the reveal
 
   double _phaseTimer = 0;
-  final _shakeRng = math.Random();
+  double _shakeTime = 0;
 
   // Mid-round swap.
   double? _swapAt;
@@ -122,11 +149,12 @@ class ButtonPanicGame extends FlameGame {
   (double, double, double, double)? _swapFrom;
 
   final Map<int, String?> _pointerTargets = {};
+  final Map<int, Offset> _pointerStart = {};
 
   late final ArenaComponent arena;
 
   @override
-  Color backgroundColor() => const Color(0xFF111117);
+  Color backgroundColor() => const Color(0xFF0D0C12);
 
   @override
   Future<void> onLoad() async {
@@ -144,7 +172,10 @@ class ButtonPanicGame extends FlameGame {
 
   void startRun(GameMode mode) {
     final now = clock();
-    final e = mode == GameMode.daily ? RunEngine.daily(now) : RunEngine.endless(math.Random().nextInt(1 << 30));
+    final platform = layoutPlatform;
+    final e = mode == GameMode.daily
+        ? RunEngine.daily(now, platform: platform)
+        : RunEngine.endless(math.Random().nextInt(1 << 30), platform: platform);
     // Practice/demo links only apply to Endless, so Daily stays fair.
     if (mode == GameMode.endless && demo.isActive) {
       e.skipTo(demo.startRound);
@@ -153,6 +184,9 @@ class ButtonPanicGame extends FlameGame {
     engine = e;
     _demoCooldown = 0;
     _demoHolding = null;
+    trauma = 0;
+    arena.fx.clear();
+    store.countRun();
     overlays.removeAll(['menu', 'gameOver']);
     phase = GamePhase.playing;
     banner = '';
@@ -170,8 +204,16 @@ class ButtonPanicGame extends FlameGame {
 
   void _beginRound() {
     final e = engine!;
+    e.aspect = arena.aspect;
     final r = e.startRound();
     round = r;
+    _lastPressedId = null;
+    _tickTimer = 0;
+    _pointerStart.clear();
+    for (final b in r.buttons) {
+      b.pressed = false;
+    }
+    audio.playPop();
     chaos = r.isCalm ? const ChaosState(calm: true, tempo: 0.8) : e.chaosFor(e.roundIndex);
     rotation = 0;
     _pointerTargets.clear();
@@ -202,6 +244,7 @@ class ButtonPanicGame extends FlameGame {
     banner = text;
     bannerSub = sub;
     bannerTime = seconds;
+    bannerDuration = seconds;
     bannerIsAlarm = alarm;
   }
 
@@ -214,23 +257,75 @@ class ButtonPanicGame extends FlameGame {
     super.update(dt);
     if (bannerTime > 0) bannerTime -= dt;
     if (flashInvert > 0) flashInvert -= dt;
+    trauma = math.max(0, trauma - dt * 1.6);
+    _shakeTime += dt;
+    _updateShake();
+    _updateHover();
 
     switch (phase) {
       case GamePhase.playing:
         _updatePlaying(dt);
       case GamePhase.roundWon:
         _phaseTimer -= dt;
-        shakeOffset = Offset.zero;
         if (_phaseTimer <= 0) {
           phase = GamePhase.playing;
           _beginRound();
         }
+      case GamePhase.failing:
+        // Let the failure land (shake, shatter, sound) before the screen.
+        _phaseTimer -= dt;
+        if (_phaseTimer <= 0) _finishLoss();
       case GamePhase.fakeGameOver:
         _phaseTimer -= dt;
         if (_phaseTimer <= 0) _revealTryAgain();
       case GamePhase.menu:
       case GamePhase.gameOver:
-        shakeOffset = Offset.zero;
+        break;
+    }
+  }
+
+  /// Smooth, deliberate shake: chaos sway (only while playing) plus fail trauma.
+  void _updateShake() {
+    final t = _shakeTime;
+    var amp = trauma * trauma * 16;
+    if (phase == GamePhase.playing && chaos.shake > 0) amp += chaos.shake * 7;
+    if (amp < 0.05) {
+      shakeOffset = Offset.zero;
+      return;
+    }
+    shakeOffset = Offset(
+      amp * (math.sin(t * 37) * 0.6 + math.sin(t * 23.3 + 1) * 0.4),
+      amp * (math.sin(t * 31.7 + 2) * 0.6 + math.sin(t * 19.1) * 0.4),
+    );
+  }
+
+  void _updateHover() {
+    final r = round;
+    final h = hoverScreen;
+    var over = false;
+    if (r != null && phase == GamePhase.playing) {
+      if (h != null) {
+        final q = arena.toPlay(h);
+        r.onHover(q.dx, q.dy);
+        over = arena.hitTest(h, r) != null;
+      } else {
+        r.onHover(null, null);
+      }
+    }
+    if (overButton.value != over) overButton.value = over;
+  }
+
+  /// Tick sound from halfway, speeding up as the ring drains.
+  void _updateTicks(Round r, double dt) {
+    if (!r.showTimer || r.isCalm || r.timeLimit <= 0) return;
+    final f = r.timeLeft / r.timeLimit;
+    if (f > 0.5 || r.timeLeft <= 0) return;
+    _tickTimer -= dt;
+    if (_tickTimer <= 0) {
+      final urgent = r.timeLeft < 0.7;
+      audio.playTick(urgent: urgent);
+      if (urgent) haptics.tick();
+      _tickTimer = 0.09 + (f / 0.5) * 0.33;
     }
   }
 
@@ -254,10 +349,30 @@ class ButtonPanicGame extends FlameGame {
     final move = r.demoMove();
     if (move == null) return;
     if (move.startsWith('hold:')) {
-      final id = move.substring(5);
-      _demoHolding = id;
-      _setPressed(r, id, true);
+      final ids = move.substring(5).split(',');
+      _demoHolding = move.substring(5);
+      for (final id in ids) {
+        _setPressed(r, id, true);
+        r.onPressDown(id);
+      }
+    } else if (move.startsWith('key:')) {
+      keyDown(move.substring(4));
+    } else if (move.startsWith('hover:')) {
+      final b = r.buttons.firstWhere((b) => b.id == move.substring(6));
+      final p = arena.playRect;
+      hoverScreen = Offset(p.left + b.x * p.width, p.top + b.y * p.height);
+    } else if (move.startsWith('swipe:')) {
+      final parts = move.split(':');
+      final id = parts[1];
       r.onPressDown(id);
+      r.onDrag(id, double.parse(parts[2]), double.parse(parts[3]));
+      r.onPressUp(id);
+      _lastPressedId = id;
+    } else if (move.startsWith('rub:')) {
+      final sr = r as dynamic;
+      sr.demoRub(dt * 4);
+      _demoCooldown = 0;
+      return;
     } else {
       _demoTap(r, move);
     }
@@ -265,6 +380,8 @@ class ButtonPanicGame extends FlameGame {
   }
 
   void _demoTap(Round r, String id) {
+    if (id.isEmpty) return;
+    _lastPressedId = id;
     _setPressed(r, id, true);
     audio.playTap();
     r.onPressDown(id);
@@ -283,26 +400,24 @@ class ButtonPanicGame extends FlameGame {
     _updateDemo(r, dt);
     r.update(dt);
     if (r.verdict != Verdict.pending && _demoHolding != null) {
-      _setPressed(r, _demoHolding!, false);
+      for (final id in _demoHolding!.split(',')) {
+        _setPressed(r, id, false);
+      }
       _demoHolding = null;
     }
     _updateSwap(r, dt);
+    _updateTicks(r, dt);
 
     // Chaos layers.
     rotation += chaos.rotationSpeed * dt;
-    if (chaos.shake > 0) {
-      final s = chaos.shake * 9;
-      shakeOffset = Offset((_shakeRng.nextDouble() * 2 - 1) * s, (_shakeRng.nextDouble() * 2 - 1) * s);
-    } else {
-      shakeOffset = Offset.zero;
-    }
 
     if (r.verdict == Verdict.success) {
       engine!.completeRound(r);
       audio.playSuccess();
       haptics.success();
+      arena.onSuccess(r, _lastPressedId);
       phase = GamePhase.roundWon;
-      _phaseTimer = 0.3;
+      _phaseTimer = 0.46;
     } else if (r.verdict == Verdict.fail) {
       _handleLoss(r);
     }
@@ -334,9 +449,20 @@ class ButtonPanicGame extends FlameGame {
   }
 
   void _handleLoss(Round r) {
-    final e = engine!;
     audio.playFail();
     haptics.fail();
+    trauma = 1;
+    arena.onFail(r, _lastPressedId);
+    for (final b in r.buttons) {
+      b.pressed = false;
+    }
+    phase = GamePhase.failing;
+    _phaseTimer = 0.62;
+  }
+
+  void _finishLoss() {
+    final r = round!;
+    final e = engine!;
     final outcome = e.registerLoss();
     if (demo.forceRetry) e.retryChance = Difficulty.retryChance; // only once
     if (outcome == LossOutcome.tryAgain) {
@@ -406,6 +532,8 @@ class ButtonPanicGame extends FlameGame {
     if (phase != GamePhase.playing || r == null || r.verdict != Verdict.pending) return;
     final target = arena.hitTest(position, r);
     _pointerTargets[pointer] = target;
+    _pointerStart[pointer] = position;
+    if (target != null) _lastPressedId = target;
     if (target != null) {
       for (final b in r.buttons) {
         if (b.id == target) {
@@ -418,8 +546,30 @@ class ButtonPanicGame extends FlameGame {
     r.onPressDown(target);
   }
 
+  void pointerMove(int pointer, Offset position) {
+    final start = _pointerStart[pointer];
+    final r = round;
+    if (start == null || r == null || phase != GamePhase.playing || r.verdict != Verdict.pending) return;
+    final h = math.max(1.0, arena.playRect.height);
+    final d = position - start;
+    r.onDrag(_pointerTargets[pointer], d.dx / h, d.dy / h);
+  }
+
+  /// Mouse moved over the game (null: it left).
+  void hover(Offset? position) => hoverScreen = position;
+
+  /// A key press while playing. Returns true if the game used it.
+  bool keyDown(String key) {
+    final r = round;
+    if (phase != GamePhase.playing || r == null || r.verdict != Verdict.pending) return false;
+    audio.playTap();
+    r.onKey(key);
+    return true;
+  }
+
   void pointerUp(int pointer) {
     if (!_pointerTargets.containsKey(pointer)) return;
+    _pointerStart.remove(pointer);
     final target = _pointerTargets.remove(pointer);
     final r = round;
     if (r == null) return;

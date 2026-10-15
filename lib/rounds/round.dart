@@ -8,12 +8,13 @@ class GameColour {
   final String name;
   final Color color;
 
-  static const red = GameColour('RED', Color(0xFFE53935));
-  static const blue = GameColour('BLUE', Color(0xFF1E88E5));
-  static const green = GameColour('GREEN', Color(0xFF43A047));
-  static const yellow = GameColour('YELLOW', Color(0xFFFDD835));
-  static const purple = GameColour('PURPLE', Color(0xFF8E24AA));
-  static const orange = GameColour('ORANGE', Color(0xFFFB8C00));
+  // One tuned family: equal visual weight, all readable on the ink background.
+  static const red = GameColour('RED', Color(0xFFFF3B4E));
+  static const blue = GameColour('BLUE', Color(0xFF3D7BFF));
+  static const green = GameColour('GREEN', Color(0xFF22C77A));
+  static const yellow = GameColour('YELLOW', Color(0xFFFFC53D));
+  static const purple = GameColour('PURPLE', Color(0xFFA35CFF));
+  static const orange = GameColour('ORANGE', Color(0xFFFF8A1F));
 
   static const all = [red, blue, green, yellow, purple, orange];
 
@@ -21,10 +22,26 @@ class GameColour {
   String toString() => name;
 }
 
+/// Which standalone version of the game a run belongs to. Each draws from its
+/// own set of round types (shared ones plus its own), and each has its own
+/// Daily sequence.
+enum PlayPlatform { desktop, touch }
+
+/// How a button is drawn (the timer ring follows the shape).
+enum ButtonShape { round, key }
+
 /// One button on screen. Positions are normalised to the play area:
 /// x and y run from 0 to 1, radius is a fraction of the area's shorter side.
 class GameButton {
-  GameButton({required this.id, required this.colour, this.label = '', this.x = 0.5, this.y = 0.5, this.radius = 0.22});
+  GameButton({
+    required this.id,
+    required this.colour,
+    this.label = '',
+    this.x = 0.5,
+    this.y = 0.5,
+    this.radius = 0.22,
+    this.shape = ButtonShape.round,
+  });
 
   final String id;
   GameColour colour;
@@ -40,8 +57,21 @@ class GameButton {
   /// Currently held down by a finger (set by the game, read by rounds).
   bool pressed = false;
 
-  /// 0..1 progress ring drawn around the button (used by "Hold it").
+  /// 0..1 progress (used by "Hold it", hover and rub rounds), drawn as the
+  /// button filling up from the bottom.
   double ring = 0;
+
+  ButtonShape shape;
+
+  /// Already used (grid rounds): drawn sunk and dimmed, can't be pressed.
+  bool spent = false;
+
+  /// Visual offset while being dragged (flick rounds), in play-area units.
+  double dragX = 0;
+  double dragY = 0;
+
+  /// Dust covering the button (rub rounds), 0..1.
+  double dust = 0;
 }
 
 enum Verdict { pending, success, fail }
@@ -87,7 +117,21 @@ class RoundRecord {
 /// round, derived from the run seed and the round number, so the Daily run
 /// is identical for everyone.
 class RoundContext {
-  RoundContext({required this.roundIndex, required this.rng, required this.history, required this.timerFactor});
+  RoundContext({
+    required this.roundIndex,
+    required this.rng,
+    required this.history,
+    required this.timerFactor,
+    this.platform = PlayPlatform.touch,
+    this.aspect = 0.75,
+  });
+
+  /// Which version of the game is running.
+  final PlayPlatform platform;
+
+  /// Play area width / height. Only used for geometry, never for random
+  /// choices, so the Daily stays the same at any window size.
+  final double aspect;
 
   /// 0-based index of this round in the run.
   final int roundIndex;
@@ -134,11 +178,24 @@ abstract class Round {
 
   bool get showTimer => true;
 
+  /// Draw the countdown as a frame around all the buttons instead of a ring
+  /// around each one (used by big grids).
+  bool get frameTimer => false;
+
   /// Calm rounds turn every chaos layer off.
   bool get isCalm => false;
 
   /// Whether the engine may swap button positions mid-round.
   bool get allowSwap => buttons.length >= 2;
+
+  /// Whether the full-screen colour invert may run. Inverting the screen turns
+  /// red into cyan and so on, so any round where the answer is a colour must
+  /// never be inverted, or the screen lies about the right answer.
+  bool get allowInvert {
+    final text = instruction.toLowerCase();
+    if (text.contains('colour') || text.contains('color')) return false;
+    return !GameColour.all.any((c) => text.contains(c.name.toLowerCase()));
+  }
 
   /// The colour memory rounds will ask about later.
   GameColour get rememberedColour => buttons.first.colour;
@@ -164,6 +221,19 @@ abstract class Round {
   /// A finger came up. [targetId] is what it went down on.
   void onPressUp(String? targetId) {}
 
+  /// The mouse moved over the play area (x, y normalised), or left it (null).
+  void onHover(double? x, double? y) {}
+
+  /// A held pointer moved. [dx], [dy] are the distance from where it went
+  /// down, in play-area heights (so they're comparable on both axes).
+  void onDrag(String? targetId, double dx, double dy) {}
+
+  /// A key was pressed (logical key label, e.g. 'F', 'Space').
+  void onKey(String key) {}
+
+  /// Whether the timer ring is drawn around [b].
+  bool ringAround(GameButton b) => showTimer && b.visible && !b.spent;
+
   /// Default: running out of time loses.
   void onTimeout() => fail('Too slow.');
 
@@ -179,12 +249,14 @@ abstract class Round {
   }
 
   /// Demo autoplay only: what a perfect player would tap right now, or null
-  /// to wait. Return `hold:ID` to press button ID and keep holding.
+  /// to wait. `hold:ID` presses and keeps holding (`hold:A,B` for two),
+  /// `key:F` presses a key, `hover:ID` moves the cursor onto it,
+  /// `swipe:ID:DX:DY` flicks it, `rub:ID` rubs it.
   String? demoMove() => null;
 }
 
 /// Families group round types for unlock announcements.
-enum RoundFamily { simple, liar, memory, runner, fake, calm }
+enum RoundFamily { simple, liar, memory, runner, fake, calm, desk, touch }
 
 extension RoundFamilyName on RoundFamily {
   String get title => switch (this) {
@@ -194,6 +266,8 @@ extension RoundFamilyName on RoundFamily {
     RoundFamily.runner => 'Runners',
     RoundFamily.fake => 'Fakes',
     RoundFamily.calm => 'Calm',
+    RoundFamily.desk => 'Mouse & keys',
+    RoundFamily.touch => 'Touch tricks',
   };
 }
 

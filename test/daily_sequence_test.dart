@@ -65,7 +65,20 @@ void main() {
       for (var i = 0; i < 200; i++) {
         families.add(engine.typeFor(i).family);
       }
-      expect(families, containsAll(RoundFamily.values));
+      expect(families, containsAll(RoundFamily.values.where((f) => f != RoundFamily.desk)));
+      expect(families, isNot(contains(RoundFamily.desk)));
+    });
+
+    test('the web version has its own deterministic Daily with desktop rounds', () {
+      final date = DateTime(2026, 10, 15);
+      final a = RunEngine.daily(date, platform: PlayPlatform.desktop);
+      final b = RunEngine.daily(date, platform: PlayPlatform.desktop);
+      final seqA = playSequence(a, 120);
+      expect(playSequence(b, 120), seqA);
+      final families = {for (var i = 0; i < 120; i++) a.typeFor(i).family};
+      expect(families, contains(RoundFamily.desk));
+      expect(families, isNot(contains(RoundFamily.touch)));
+      expect(seqA, isNot(playSequence(RunEngine.daily(date), 120)));
     });
   });
 }
