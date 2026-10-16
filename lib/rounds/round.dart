@@ -107,11 +107,15 @@ class FakeOverlay {
 
 /// What happened in previous rounds, for memory rounds.
 class RoundRecord {
-  const RoundRecord({required this.typeId, required this.colour});
+  const RoundRecord({required this.typeId, required this.colour, this.memo});
   final String typeId;
 
   /// The colour the player should remember for this round.
   final GameColour colour;
+
+  /// What a "Remember this" round asked the player to keep in mind
+  /// ('n:47' for a number, 'w:FROG' for a word), else null.
+  final String? memo;
 }
 
 /// Everything a round needs to build itself. The [rng] is private to this
@@ -200,6 +204,9 @@ abstract class Round {
 
   /// The colour memory rounds will ask about later.
   GameColour get rememberedColour => buttons.first.colour;
+
+  /// Something a later Recall round will ask about (Remember rounds only).
+  String? get memoToKeep => null;
 
   double get timeLeft => (timeLimit - elapsed).clamp(0, timeLimit);
 

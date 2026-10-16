@@ -4,6 +4,7 @@ import 'touch_rounds.dart';
 import 'fake_rounds.dart';
 import 'liar_rounds.dart';
 import 'memory_rounds.dart';
+import 'remember_rounds.dart';
 import 'round.dart';
 import 'runner_rounds.dart';
 import 'simple_rounds.dart';
@@ -26,6 +27,8 @@ const List<RoundType> allRoundTypes = [
   FlashSequenceType(),
   FakeLoadingType(),
   FakeWinType(),
+  RememberType(),
+  RecallType(),
 ];
 
 /// Rounds only the web/desktop version draws (cursor, keyboard, wide stage).

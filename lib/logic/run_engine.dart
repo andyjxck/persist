@@ -71,8 +71,9 @@ class RunEngine {
     final weights = <double>[];
     for (final t in types) {
       if (index < t.unlockRound) continue;
-      // History length always equals the round index, so this is deterministic.
-      if (!t.isEligible(_historyStub(index))) continue;
+      // Eligibility only ever sees which types came before (never what the
+      // player did), so the sequence depends on seed and index alone.
+      if (!t.isEligible(_typeHistory(index))) continue;
       final w = t.weight(index);
       if (w <= 0) continue;
       candidates.add(t);
@@ -87,8 +88,15 @@ class RunEngine {
     return candidates.last;
   }
 
-  List<RoundRecord> _historyStub(int index) =>
-      index == history.length ? history : List.filled(index, const RoundRecord(typeId: '', colour: GameColour.red));
+  final List<String> _typeIds = [];
+
+  /// The type ids of rounds 0..index-1, worked out from the seed (cached).
+  List<RoundRecord> _typeHistory(int index) {
+    while (_typeIds.length < index) {
+      _typeIds.add(typeFor(_typeIds.length).id);
+    }
+    return [for (var i = 0; i < index; i++) RoundRecord(typeId: _typeIds[i], colour: GameColour.red)];
+  }
 
   ChaosState chaosFor(int index) => ChaosState.forRound(seed, index);
 
@@ -111,7 +119,7 @@ class RunEngine {
 
   /// Call when the current round was survived.
   void completeRound(Round round) {
-    history.add(RoundRecord(typeId: typeFor(roundIndex).id, colour: round.rememberedColour));
+    history.add(RoundRecord(typeId: typeFor(roundIndex).id, colour: round.rememberedColour, memo: round.memoToKeep));
     roundIndex++;
     retries = 0;
   }

@@ -20,8 +20,9 @@ enum GamePhase { menu, playing, roundWon, failing, fakeGameOver, gameOver }
 ///   ?from=20   start Endless at round 20 (practice: scores aren't saved)
 ///   ?demo      the game plays itself (add &fail=15 to make it lose at 15)
 ///   ?retry     the first loss is always a surprise TRY AGAIN
+///   ?seed=123  Endless uses this seed (repeatable previews)
 class DemoConfig {
-  const DemoConfig({this.startRound = 0, this.autoplay = false, this.failAt, this.forceRetry = false});
+  const DemoConfig({this.startRound = 0, this.autoplay = false, this.failAt, this.forceRetry = false, this.seed});
 
   factory DemoConfig.fromUri(Uri uri) {
     final q = uri.queryParameters;
@@ -30,6 +31,7 @@ class DemoConfig {
       autoplay: q.containsKey('demo'),
       failAt: int.tryParse(q['fail'] ?? ''),
       forceRetry: q.containsKey('retry'),
+      seed: int.tryParse(q['seed'] ?? ''),
     );
   }
 
@@ -37,8 +39,9 @@ class DemoConfig {
   final bool autoplay;
   final int? failAt;
   final bool forceRetry;
+  final int? seed;
 
-  bool get isActive => startRound > 0 || autoplay || forceRetry;
+  bool get isActive => startRound > 0 || autoplay || forceRetry || seed != null;
 }
 
 /// What the game-over screen shows (also used, unchanged, for the fake one).
@@ -187,7 +190,7 @@ class ButtonPanicGame extends FlameGame {
     final platform = layoutPlatform;
     final e = mode == GameMode.daily
         ? RunEngine.daily(now, platform: platform)
-        : RunEngine.endless(math.Random().nextInt(1 << 30), platform: platform);
+        : RunEngine.endless(demo.seed ?? math.Random().nextInt(1 << 30), platform: platform);
     // Practice/demo links only apply to Endless, so Daily stays fair.
     if (mode == GameMode.endless && demo.isActive) {
       e.skipTo(demo.startRound);
