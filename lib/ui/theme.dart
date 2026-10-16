@@ -2,36 +2,30 @@ import 'package:flutter/painting.dart';
 
 /// The one visual identity, used by the game canvas and every screen.
 ///
-/// Type: Unbounded (display: titles, instructions, numbers) paired with
-/// Manrope (text: hints, body, labels). Both bundled under the SIL OFL.
-/// Palette: warm ink background, one signal red, warm off-white text.
+/// Near-black void, one cold off-white for words, greys for everything
+/// quieter, and the button's own colours as the only colour on screen.
+/// Type: Manrope (bundled, SIL OFL), set small, spaced and sparse.
 class BP {
-  // Surfaces.
-  static const ink = Color(0xFF0D0C12);
-  static const ink2 = Color(0xFF14121B);
-  static const surface = Color(0xFF1A1823);
-  static const surfaceHi = Color(0xFF221F2D);
-  static const line = Color(0xFF2C2938);
-  static const lineSoft = Color(0x1FFFFFFF);
+  // The void.
+  static const ink = Color(0xFF050505);
+  static const line = Color(0xFF1E1E1E);
 
-  // Text.
-  static const paper = Color(0xFFF5F1E8);
-  static const muted = Color(0xFFA29DAE);
-  static const faint = Color(0xFF6D687A);
+  // Words.
+  static const paper = Color(0xFFE4E4E2);
+  static const muted = Color(0xFF8C8C8A);
+  static const faint = Color(0xFF4E4E4C);
 
   // Signals.
-  static const signal = Color(0xFFFF3B4E); // the button, primary actions
-  static const amber = Color(0xFFFFB020); // warning
-  static const mint = Color(0xFF2BD98A); // success
-  static const calm = Color(0xFF8EC5FF); // calm rounds
-  static const calmBg = Color(0xFF101B2B);
+  static const signal = Color(0xFFFF3B4E); // the button, the deadline, failure
+  static const calm = Color(0xFF8193A8); // calm rounds: cold, not cheerful
+  static const calmBg = Color(0xFF05070A);
 
-  static const display = 'Unbounded';
+  static const display = 'Manrope';
   static const text = 'Manrope';
 
   static const tabular = [FontFeature.tabularFigures()];
 
-  static TextStyle d(double size, {Color color = paper, FontWeight weight = FontWeight.w800, double height = 1.05, double spacing = 0}) =>
+  static TextStyle d(double size, {Color color = paper, FontWeight weight = FontWeight.w700, double height = 1.05, double spacing = 0}) =>
       TextStyle(
         fontFamily: display,
         fontSize: size,
@@ -45,9 +39,16 @@ class BP {
   static TextStyle t(double size, {Color color = paper, FontWeight weight = FontWeight.w500, double height = 1.45, double spacing = 0}) =>
       TextStyle(fontFamily: text, fontSize: size, color: color, fontWeight: weight, height: height, letterSpacing: spacing);
 
-  /// Small all-caps label (eyebrows, chips, HUD).
-  static TextStyle label(double size, {Color color = muted}) =>
-      TextStyle(fontFamily: text, fontSize: size, color: color, fontWeight: FontWeight.w800, letterSpacing: size * 0.14, height: 1.2);
+  /// Small, widely spaced capitals: the only kind of label there is.
+  static TextStyle label(double size, {Color color = muted}) => TextStyle(
+    fontFamily: text,
+    fontSize: size,
+    color: color,
+    fontWeight: FontWeight.w700,
+    letterSpacing: size * 0.32,
+    height: 1.2,
+    fontFeatures: tabular,
+  );
 
   /// Spacing scale.
   static const s1 = 4.0, s2 = 8.0, s3 = 12.0, s4 = 16.0, s5 = 24.0, s6 = 32.0, s7 = 48.0, s8 = 64.0;

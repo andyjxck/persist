@@ -4,12 +4,14 @@ import 'dart:ui';
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart';
 
+import '../logic/clock_beat.dart';
 import '../logic/difficulty.dart';
 import '../logic/rng.dart';
 import '../logic/run_engine.dart';
 import '../rounds/round.dart';
 import '../services/feedback.dart';
 import '../services/storage.dart';
+import '../ui/theme.dart';
 import 'arena_component.dart';
 
 enum GamePhase { menu, playing, roundWon, failing, fakeGameOver, gameOver }
@@ -122,12 +124,22 @@ class ButtonPanicGame extends FlameGame {
 
   String? _lastPressedId;
   double _tickTimer = 0;
+  bool _tock = false;
+
+  /// Seconds since the clock last beat (the arena pulses with it), and
+  /// whether that beat was a tight one.
+  double beatAge = 99;
+  bool beatTight = false;
+
+  /// Set from the platform's reduce-motion setting: no shake, no pulse.
+  bool reduceMotion = false;
   RunEngine? engine;
   Round? round;
   ChaosState chaos = ChaosState.none;
   RunResult? lastResult;
 
-  /// Banner across the top of the play area ("NEW: Liars", "TRY AGAIN").
+  /// Announcement in the top strip ("NEW: Liars", "TRY AGAIN"). It is drawn
+  /// only in its own strip, never over the instruction, timer or button.
   String banner = '';
   String bannerSub = '';
   double bannerTime = 0;
@@ -154,7 +166,7 @@ class ButtonPanicGame extends FlameGame {
   late final ArenaComponent arena;
 
   @override
-  Color backgroundColor() => const Color(0xFF0D0C12);
+  Color backgroundColor() => BP.ink;
 
   @override
   Future<void> onLoad() async {
@@ -189,13 +201,12 @@ class ButtonPanicGame extends FlameGame {
     store.countRun();
     overlays.removeAll(['menu', 'gameOver']);
     phase = GamePhase.playing;
-    banner = '';
-    audio.startMusic();
+    _clearBanner();
     _beginRound();
   }
 
   void backToMenu() {
-    audio.stopMusic();
+    _clearBanner();
     phase = GamePhase.menu;
     round = null;
     overlays.removeAll(['gameOver']);
@@ -208,16 +219,16 @@ class ButtonPanicGame extends FlameGame {
     final r = e.startRound();
     round = r;
     _lastPressedId = null;
-    _tickTimer = 0;
+    _clearBanner(); // an announcement never outlives its round
+    _tickTimer = 0; // the clock starts the moment the round appears
+    _tock = false;
     _pointerStart.clear();
     for (final b in r.buttons) {
       b.pressed = false;
     }
-    audio.playPop();
     chaos = r.isCalm ? const ChaosState(calm: true, tempo: 0.8) : e.chaosFor(e.roundIndex);
     rotation = 0;
     _pointerTargets.clear();
-    audio.setTempo(chaos.tempo);
     if (chaos.invert) haptics.chaos();
 
     // Plan a mid-round swap (deterministic per round).
@@ -240,6 +251,24 @@ class ButtonPanicGame extends FlameGame {
     }
   }
 
+  /// The scene is upright, so the top strip is clear of everything the
+  /// round draws. While a round rotates, its instruction and buttons can
+  /// swing into the strip, so announcements wait.
+  bool get _bannerClear => rotation.abs() < 1e-3;
+
+  /// Whether the announcement is on screen now: only while a run is being
+  /// played, and only when the strip is clear.
+  bool get bannerShowing =>
+      bannerTime > 0 &&
+      banner.isNotEmpty &&
+      _bannerClear &&
+      (phase == GamePhase.playing || phase == GamePhase.roundWon);
+
+  void _clearBanner() {
+    banner = '';
+    bannerTime = 0;
+  }
+
   void _showBanner(String text, String sub, double seconds, {bool alarm = false}) {
     banner = text;
     bannerSub = sub;
@@ -255,7 +284,8 @@ class ButtonPanicGame extends FlameGame {
   @override
   void update(double dt) {
     super.update(dt);
-    if (bannerTime > 0) bannerTime -= dt;
+    // A held announcement keeps its time until it can be shown.
+    if (bannerTime > 0 && _bannerClear) bannerTime -= dt;
     if (flashInvert > 0) flashInvert -= dt;
     trauma = math.max(0, trauma - dt * 1.6);
     _shakeTime += dt;
@@ -284,11 +314,27 @@ class ButtonPanicGame extends FlameGame {
     }
   }
 
+  /// Largest chaos sway while playing, and the extra tremor at the deadline,
+  /// in pixels. Together they stay under [ArenaLayout.maxPlayShake], which
+  /// keeps the announcement strip clear of the instruction.
+  static const chaosShakePx = 7.0;
+  static const deadlineTremorPx = 2.2;
+
   /// Smooth, deliberate shake: chaos sway (only while playing) plus fail trauma.
   void _updateShake() {
     final t = _shakeTime;
+    if (reduceMotion) {
+      shakeOffset = Offset.zero;
+      return;
+    }
     var amp = trauma * trauma * 16;
-    if (phase == GamePhase.playing && chaos.shake > 0) amp += chaos.shake * 7;
+    if (phase == GamePhase.playing && chaos.shake > 0) amp += chaos.shake * chaosShakePx;
+    // A small tremor in the last moments of a timed round.
+    final r = round;
+    if (phase == GamePhase.playing && r != null && r.showTimer && !r.isCalm && r.timeLimit > 0 && r.verdict == Verdict.pending) {
+      final f = r.timeLeft / r.timeLimit;
+      if (f < 0.2) amp += (0.2 - f) / 0.2 * deadlineTremorPx;
+    }
     if (amp < 0.05) {
       shakeOffset = Offset.zero;
       return;
@@ -315,18 +361,24 @@ class ButtonPanicGame extends FlameGame {
     if (overButton.value != over) overButton.value = over;
   }
 
-  /// Tick sound from halfway, speeding up as the ring drains.
+  /// The clock: tick, tock, tick, tock from the moment the round appears,
+  /// closing up as the time drains and as the run goes on.
   void _updateTicks(Round r, double dt) {
-    if (!r.showTimer || r.isCalm || r.timeLimit <= 0) return;
-    final f = r.timeLeft / r.timeLimit;
-    if (f > 0.5 || r.timeLeft <= 0) return;
+    beatAge += dt;
+    if (r.verdict != Verdict.pending) return;
+    final timed = r.showTimer && r.timeLimit > 0;
+    final f = timed ? (r.timeLeft / r.timeLimit).clamp(0.0, 1.0) : 1.0;
+    if (timed && r.timeLeft <= 0) return;
     _tickTimer -= dt;
-    if (_tickTimer <= 0) {
-      final urgent = r.timeLeft < 0.7;
-      audio.playTick(urgent: urgent);
-      if (urgent) haptics.tick();
-      _tickTimer = 0.09 + (f / 0.5) * 0.33;
-    }
+    if (_tickTimer > 0) return;
+    final tight = ClockBeat.tight(timeFraction: f, timed: timed, calm: r.isCalm);
+    audio.playClock(tock: _tock, tight: tight);
+    if (tight) haptics.tick();
+    _tock = !_tock;
+    beatAge = 0;
+    beatTight = tight;
+    _tickTimer += ClockBeat.interval(timeFraction: f, roundIndex: r.ctx.roundIndex, timed: timed, calm: r.isCalm);
+    if (_tickTimer < 0) _tickTimer = 0;
   }
 
   // Demo autoplay state.
@@ -383,7 +435,7 @@ class ButtonPanicGame extends FlameGame {
     if (id.isEmpty) return;
     _lastPressedId = id;
     _setPressed(r, id, true);
-    audio.playTap();
+    audio.playPress();
     r.onPressDown(id);
     Future.delayed(const Duration(milliseconds: 90), () => _setPressed(r, id, false));
   }
@@ -413,7 +465,7 @@ class ButtonPanicGame extends FlameGame {
 
     if (r.verdict == Verdict.success) {
       engine!.completeRound(r);
-      audio.playSuccess();
+      audio.playClear();
       haptics.success();
       arena.onSuccess(r, _lastPressedId);
       phase = GamePhase.roundWon;
@@ -456,6 +508,7 @@ class ButtonPanicGame extends FlameGame {
     for (final b in r.buttons) {
       b.pressed = false;
     }
+    _clearBanner();
     phase = GamePhase.failing;
     _phaseTimer = 0.62;
   }
@@ -474,7 +527,6 @@ class ButtonPanicGame extends FlameGame {
     } else {
       phase = GamePhase.gameOver;
       lastResult = _buildResult(r, save: true);
-      audio.stopMusic();
       overlays.add('gameOver');
     }
   }
@@ -487,7 +539,7 @@ class ButtonPanicGame extends FlameGame {
     flashInvert = 0.12;
     phase = GamePhase.playing;
     _beginRound();
-    _showBanner('TRY AGAIN', 'Less time. The clock is running!', 1.3, alarm: true);
+    _showBanner('TRY AGAIN  ·  LESS TIME', '', 1.4, alarm: true);
   }
 
   RunResult _buildResult(Round r, {required bool save}) {
@@ -538,7 +590,7 @@ class ButtonPanicGame extends FlameGame {
       for (final b in r.buttons) {
         if (b.id == target) {
           b.pressed = true;
-          audio.playTap();
+          audio.playPress();
           haptics.tap();
         }
       }
@@ -562,7 +614,7 @@ class ButtonPanicGame extends FlameGame {
   bool keyDown(String key) {
     final r = round;
     if (phase != GamePhase.playing || r == null || r.verdict != Verdict.pending) return false;
-    audio.playTap();
+    audio.playPress();
     r.onKey(key);
     return true;
   }
@@ -588,7 +640,6 @@ class ButtonPanicGame extends FlameGame {
   void setSound(bool on) {
     audio.enabled = on;
     store.setSoundOn(on);
-    if (!on) audio.stopMusic();
   }
 
   void setHaptics(bool on) {

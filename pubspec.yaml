@@ -60,14 +60,8 @@ flutter:
   assets:
     - assets/audio/
 
-  # Type pairing, bundled locally (SIL Open Font License, see assets/fonts).
+  # Type, bundled locally (SIL Open Font License, see assets/fonts).
   fonts:
-    - family: Unbounded
-      fonts:
-        - asset: assets/fonts/Unbounded-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Unbounded-ExtraBold.ttf
-          weight: 800
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope-Medium.ttf

@@ -8,13 +8,14 @@ class GameColour {
   final String name;
   final Color color;
 
-  // One tuned family: equal visual weight, all readable on the ink background.
+  // One tuned family, all readable on the near-black void, and every pair at
+  // least 100 apart in RGB so colour rounds are never a guess (see tests).
   static const red = GameColour('RED', Color(0xFFFF3B4E));
   static const blue = GameColour('BLUE', Color(0xFF3D7BFF));
   static const green = GameColour('GREEN', Color(0xFF22C77A));
-  static const yellow = GameColour('YELLOW', Color(0xFFFFC53D));
+  static const yellow = GameColour('YELLOW', Color(0xFFFFE03A));
   static const purple = GameColour('PURPLE', Color(0xFFA35CFF));
-  static const orange = GameColour('ORANGE', Color(0xFFFF8A1F));
+  static const orange = GameColour('ORANGE', Color(0xFFFF7A00));
 
   static const all = [red, blue, green, yellow, purple, orange];
 

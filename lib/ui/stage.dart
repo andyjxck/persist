@@ -1,6 +1,5 @@
 import 'package:flame/game.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../game/button_panic_game.dart';

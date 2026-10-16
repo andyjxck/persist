@@ -62,6 +62,7 @@ class _ButtonPanicAppState extends State<ButtonPanicApp> {
         builder: (context, box) {
           final wide = kIsWeb && box.maxWidth >= ButtonPanicApp.wideMinWidth && box.maxHeight >= ButtonPanicApp.wideMinHeight;
           game.wide = wide;
+          game.reduceMotion = MediaQuery.of(context).disableAnimations;
           return DefaultTextStyle(
             style: BP.t(15),
             child: wide ? WebPage(game: game, gameKey: _gameKey) : _PhoneShell(game: game, gameKey: _gameKey),
@@ -92,18 +93,21 @@ class _PhoneShellState extends State<_PhoneShell> {
       child: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(child: GameStage(game: game, gameKey: widget.gameKey)),
+            // Its own layer: the game repaints every frame, the shell doesn't.
+            Positioned.fill(child: RepaintBoundary(child: GameStage(game: game, gameKey: widget.gameKey))),
             ValueListenableBuilder<int>(
               valueListenable: game.revision,
               builder: (context, _, _) {
                 final inPlay = game.phase != GamePhase.menu && game.phase != GamePhase.gameOver && game.phase != GamePhase.fakeGameOver;
                 if (!inPlay) return const SizedBox.shrink();
                 return Positioned(
-                  top: 6,
-                  right: 12,
-                  child: IconPill(
+                  top: 0,
+                  right: 4,
+                  child: StarkAction(
+                    label: game.audio.enabled ? 'SOUND' : 'MUTED',
+                    size: 9,
+                    color: BP.faint,
                     semantic: 'Sound',
-                    painter: SpeakerPainter(game.audio.enabled),
                     onTap: () => setState(() => game.setSound(!game.audio.enabled)),
                   ),
                 );
