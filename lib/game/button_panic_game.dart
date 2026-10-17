@@ -120,6 +120,10 @@ class ButtonPanicGame extends FlameGame {
   bool wide = false;
   PlayPlatform get layoutPlatform => wide ? PlayPlatform.desktop : PlayPlatform.touch;
 
+  /// False when the phone version is played with a mouse only (a narrow
+  /// laptop window): rounds that need two fingers are left out.
+  bool multiTouch = true;
+
   /// Mouse position over the game (null when it's elsewhere).
   Offset? hoverScreen;
 
@@ -202,8 +206,8 @@ class ButtonPanicGame extends FlameGame {
     final now = clock();
     final platform = layoutPlatform;
     final e = mode == GameMode.daily
-        ? RunEngine.daily(now, platform: platform)
-        : RunEngine.endless(demo.seed ?? math.Random().nextInt(1 << 30), platform: platform);
+        ? RunEngine.daily(now, platform: platform, multiTouch: multiTouch)
+        : RunEngine.endless(demo.seed ?? math.Random().nextInt(1 << 30), platform: platform, multiTouch: multiTouch);
     // Practice/demo links only apply to Endless, so Daily stays fair.
     if (mode == GameMode.endless && demo.isActive) {
       e.skipTo(demo.startRound);

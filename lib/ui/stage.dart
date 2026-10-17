@@ -38,6 +38,10 @@ class GameStage extends StatelessWidget {
         child: GameWidget<ButtonPanicGame>(
           key: gameKey,
           game: game,
+          // Flame's own focus node swallows every key when it has focus and
+          // the game has no KeyboardEvents. Keys are handled by the web
+          // page's Focus around the stage, so the game must never take it.
+          autofocus: false,
           overlayBuilderMap: {
             'menu': (context, game) => MenuOverlay(game: game),
             'gameOver': (context, game) => GameOverOverlay(game: game),

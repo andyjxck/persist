@@ -23,16 +23,22 @@ class RunEngine {
 
   /// A Daily run for [date] (local calendar day). Each version of the game
   /// has its own Daily: same for every player on that version.
-  factory RunEngine.daily(DateTime date, {PlayPlatform platform = PlayPlatform.touch}) => RunEngine(
+  factory RunEngine.daily(DateTime date, {PlayPlatform platform = PlayPlatform.touch, bool multiTouch = true}) =>
+      RunEngine(
     mode: GameMode.daily,
     seed: platformDailySeed(date, platform),
-    types: roundTypesFor(platform),
+    types: roundTypesFor(platform, multiTouch: multiTouch),
     platform: platform,
   );
 
   /// An Endless run with a fresh random seed.
-  factory RunEngine.endless(int seed, {PlayPlatform platform = PlayPlatform.touch}) =>
-      RunEngine(mode: GameMode.endless, seed: seed, types: roundTypesFor(platform), platform: platform);
+  factory RunEngine.endless(int seed, {PlayPlatform platform = PlayPlatform.touch, bool multiTouch = true}) =>
+      RunEngine(
+        mode: GameMode.endless,
+        seed: seed,
+        types: roundTypesFor(platform, multiTouch: multiTouch),
+        platform: platform,
+      );
 
   static int platformDailySeed(DateTime date, PlayPlatform platform) =>
       platform == PlayPlatform.touch ? dailySeed(date) : (dailySeed(date) ^ hashString('desktop')) & 0xffffffff;

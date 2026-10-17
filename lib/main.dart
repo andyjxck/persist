@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'game/button_panic_game.dart';
+import 'services/input_caps.dart';
 import 'services/storage.dart';
 import 'ui/stage.dart';
 import 'ui/theme.dart';
@@ -51,6 +52,10 @@ class _ButtonPanicAppState extends State<ButtonPanicApp> {
   );
   final _gameKey = GlobalKey();
 
+  // Read once: what the device can do doesn't change while it's open.
+  final bool _hasMouse = inputHasMouse();
+  final bool _hasTouch = inputHasTouch();
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -60,8 +65,18 @@ class _ButtonPanicAppState extends State<ButtonPanicApp> {
       theme: ThemeData(brightness: Brightness.dark, fontFamily: BP.text, useMaterial3: true),
       home: LayoutBuilder(
         builder: (context, box) {
-          final wide = kIsWeb && box.maxWidth >= ButtonPanicApp.wideMinWidth && box.maxHeight >= ButtonPanicApp.wideMinHeight;
+          // The desktop version needs a mouse that hovers (cursor and keyboard
+          // rounds) as well as the room. Tablets get the touch version at any
+          // size.
+          final wide =
+              kIsWeb &&
+              _hasMouse &&
+              box.maxWidth >= ButtonPanicApp.wideMinWidth &&
+              box.maxHeight >= ButtonPanicApp.wideMinHeight;
           game.wide = wide;
+          // A mouse-only browser in the phone layout can't press two
+          // buttons at once.
+          game.multiTouch = !kIsWeb || _hasTouch;
           game.reduceMotion = MediaQuery.of(context).disableAnimations;
           return DefaultTextStyle(
             style: BP.t(15),

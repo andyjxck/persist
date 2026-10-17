@@ -37,11 +37,18 @@ const List<RoundType> desktopRoundTypes = [ChaseType(), KeyTrapType(), HoverHold
 /// Rounds only the mobile version draws (flicks, two thumbs, rubbing).
 const List<RoundType> touchRoundTypes = [FlickType(), BothThumbsType(), ScratchType()];
 
+/// Touch rounds that need two fingers down at once. Left out when the phone
+/// version is played with only a mouse (a narrow laptop window).
+const Set<String> multiTouchRoundIds = {'both_thumbs'};
+
 /// The full pool for one version of the game. Shared rounds come first, in
 /// their original order, so each version's Daily stays stable.
-List<RoundType> roundTypesFor(PlayPlatform platform) => [
+/// [multiTouch] false drops rounds a single mouse pointer can't win.
+List<RoundType> roundTypesFor(PlayPlatform platform, {bool multiTouch = true}) => [
   ...allRoundTypes,
-  ...(platform == PlayPlatform.desktop ? desktopRoundTypes : touchRoundTypes),
+  ...(platform == PlayPlatform.desktop
+      ? desktopRoundTypes
+      : touchRoundTypes.where((t) => multiTouch || !multiTouchRoundIds.contains(t.id))),
 ];
 
 /// Used by the engine for suspiciously calm rounds.
