@@ -129,7 +129,8 @@ class RoundContext {
     required this.timerFactor,
     this.platform = PlayPlatform.touch,
     this.aspect = 0.75,
-  });
+    int? difficultyIndex,
+  }) : difficultyIndex = difficultyIndex ?? roundIndex;
 
   /// Which version of the game is running.
   final PlayPlatform platform;
@@ -147,8 +148,13 @@ class RoundContext {
   /// shrinks again after a surprise TRY AGAIN).
   final double timerFactor;
 
+  /// How hard this round plays, in "round numbers". The same as
+  /// [roundIndex] in Daily and Endless; Story levels set it themselves, so a
+  /// level's third round can play like round 15.
+  final int difficultyIndex;
+
   /// 0 at the start, rising towards 1 around round 40 and beyond.
-  double get difficulty => (roundIndex / 40).clamp(0.0, 1.5);
+  double get difficulty => (difficultyIndex / 40).clamp(0.0, 1.5);
 }
 
 /// Base class for one round. Subclasses describe what's on screen (buttons,

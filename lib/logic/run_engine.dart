@@ -3,7 +3,7 @@ import '../rounds/round.dart';
 import 'difficulty.dart';
 import 'rng.dart';
 
-enum GameMode { daily, endless }
+enum GameMode { daily, endless, story }
 
 /// What happens after a wrong move.
 enum LossOutcome { gameOver, tryAgain }
@@ -106,7 +106,13 @@ class RunEngine {
 
   ChaosState chaosFor(int index) => ChaosState.forRound(seed, index);
 
-  double timerFactorFor(int index, {int retries = 0}) => Difficulty.timerFactor(index, retries: retries);
+  double timerFactorFor(int index, {int retries = 0}) => Difficulty.timerFactor(difficultyIndexFor(index), retries: retries);
+
+  /// How hard round [index] plays. Daily and Endless: the round number.
+  int difficultyIndexFor(int index) => index;
+
+  /// Story levels end after a set number of rounds; Daily and Endless never do.
+  bool get isComplete => false;
 
   /// Builds the current round. Calling it again after a TRY AGAIN rebuilds the
   /// same round (same buttons, same tricks) with a shorter timer.
@@ -119,6 +125,7 @@ class RunEngine {
       timerFactor: timerFactorFor(roundIndex, retries: retries),
       platform: platform,
       aspect: aspect,
+      difficultyIndex: difficultyIndexFor(roundIndex),
     );
     return type.create(ctx);
   }

@@ -237,10 +237,12 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     return (r.timeLeft / r.timeLimit).clamp(0.0, 1.0);
   }
 
-  /// Cream paper. As the round's clock drains, a pink-red flood rises from
-  /// the bottom of the screen with a hard black waterline that jolts on every
-  /// beat. Calm rounds are cold blue-grey and never flood. Two rects and a
-  /// line a frame: cheap on any phone.
+  /// The near-black control room. As the round's clock drains, a dark
+  /// arterial-red flood rises from the bottom of the screen under a thin
+  /// alarm-red waterline that jolts on every beat, and once the clock is past
+  /// halfway the edges of the screen throb red on the beat like a pulse in
+  /// your ears. Calm rounds are cold navy and never flood or throb. Two rects,
+  /// a line and (on a beat) one gradient fill a frame: cheap on any phone.
   void _drawBackground(Canvas canvas, Rect screen, bool calm, Round? round) {
     if (calm) {
       canvas.drawRect(screen, _bgPaint..color = BP.calmBg);
@@ -248,21 +250,46 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     }
     if (round == null) return;
     final f = game.phase == GamePhase.playing ? _timeLeft(round) : (game.phase == GamePhase.roundWon ? 1.0 : 1 - _floodSeen);
-    final runPush = math.min(0.12, round.ctx.roundIndex * 0.006);
+    final runPush = math.min(0.12, round.ctx.difficultyIndex * 0.006);
     final level = ((1 - f) * 0.78 + runPush).clamp(0.0, 0.9);
     _floodSeen = 1 - f;
     if (level <= 0.002) return;
     final jolt = _pulse * 6;
     final y = screen.bottom - screen.height * level - jolt;
     canvas.drawRect(Rect.fromLTRB(screen.left, y, screen.right, screen.bottom), _bgPaint..color = BP.flood);
-    canvas.drawLine(Offset(screen.left, y), Offset(screen.right, y), _bgLine);
+    canvas.drawLine(Offset(screen.left, y), Offset(screen.right, y), _bgLine..color = BP.signal.withValues(alpha: 0.55 + 0.45 * _pulse));
+    _drawEdgePulse(canvas, screen, level);
+  }
+
+  Size _edgeSize = Size.zero;
+  final Paint _edgePaint = Paint();
+
+  /// Red throbbing at the edges of the screen on each clock beat, stronger
+  /// the less time is left. One gradient-filled rect (no layer); the shader
+  /// is rebuilt only when the screen size changes. Off with reduce motion
+  /// (the pulse is zero then).
+  void _drawEdgePulse(Canvas canvas, Rect screen, double level) {
+    final strength = _pulse * ((level - 0.35) / 0.45).clamp(0.0, 1.0);
+    if (strength < 0.02) return;
+    if (_edgeSize != screen.size) {
+      _edgeSize = screen.size;
+      final radius = screen.size.longestSide * 0.75;
+      _edgePaint.shader = ui.Gradient.radial(
+        screen.center,
+        radius,
+        const [Color(0x00FF2B39), Color(0x00FF2B39), Color(0xFFFF2B39)],
+        const [0, 0.55, 1],
+      );
+    }
+    _edgePaint.color = Color.fromRGBO(255, 255, 255, 0.55 * strength);
+    canvas.drawRect(screen, _edgePaint);
   }
 
   double _floodSeen = 0;
   final Paint _bgPaint = Paint();
   final Paint _bgLine = Paint()
-    ..color = BP.paper
-    ..strokeWidth = 4;
+    ..color = BP.signal
+    ..strokeWidth = 2;
 
   // --- Text ------------------------------------------------------------------
 
@@ -285,16 +312,19 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
 
   // --- HUD -------------------------------------------------------------------
 
-  /// The HUD: a black bar across the top with hazard tape under it. On the
-  /// left a quiet ROUND label and the number on a hazard tag; on the wide
+  /// The HUD: a dark instrument bar across the top with a hairline rule under
+  /// it and a thin alarm-red strip that brightens on each clock beat. On the
+  /// left a quiet ROUND label and the number on an amber tag; on the wide
   /// stage the mode (or MUTED) sits on the right, inside the same width so
   /// announcements keep their room.
   void _drawHud(Canvas canvas, Round round) {
     final barH = hudHeight - 12;
     final bar = Rect.fromLTWH(-40, -40, _screen.width + 80, barH + 40);
-    canvas.drawRect(bar, _fill..color = BP.paper);
-    _drawTape(canvas, Rect.fromLTWH(-40, barH, _screen.width + 80, 8));
-    canvas.drawRect(Rect.fromLTWH(-40, barH, _screen.width + 80, 1.5), _fill..color = BP.paper);
+    canvas.drawRect(bar, _fill..color = BP.panel);
+    canvas.drawRect(Rect.fromLTWH(-40, barH, _screen.width + 80, 1), _fill..color = BP.line);
+    final calmHud = round.isCalm;
+    final strip = calmHud ? BP.calm.withValues(alpha: 0.35) : BP.signal.withValues(alpha: 0.35 + 0.65 * _pulse);
+    canvas.drawRect(Rect.fromLTWH(-40, barH + 1, _screen.width + 80, 2), _fill..color = strip);
 
     final (label, number, practice) = _hudParts(round);
     final midY = barH / 2;
@@ -302,21 +332,25 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     label.paint(canvas, Offset(x, midY - label.height / 2 + 1));
     x += label.width + 8;
     final tag = Rect.fromLTWH(x, midY - number.height / 2 - 1, number.width + 14, number.height + 2);
-    canvas.drawRRect(RRect.fromRectAndRadius(tag, const Radius.circular(5)), _fill..color = BP.hazard);
+    canvas.drawRRect(RRect.fromRectAndRadius(tag, const Radius.circular(BP.radius)), _fill..color = BP.hazard);
     number.paint(canvas, Offset(x + 7, midY - number.height / 2));
     x = tag.right + 10;
     if (practice != null) {
       final chip = Rect.fromLTWH(x, midY - practice.height / 2 - 4, practice.width + 14, practice.height + 8);
-      canvas.drawRRect(RRect.fromRectAndRadius(chip, const Radius.circular(4)), _stroke
-        ..strokeWidth = 1.5
-        ..color = BP.onInk);
+      canvas.drawRRect(RRect.fromRectAndRadius(chip, const Radius.circular(BP.radius)), _stroke
+        ..strokeWidth = 1
+        ..color = BP.line);
       practice.paint(canvas, Offset(x + 7, midY - practice.height / 2));
     }
 
     if (wide) {
       final width = _hudWidth(round);
       final muted = !game.audio.enabled;
-      final mode = game.engine?.mode == GameMode.daily ? 'DAILY' : 'ENDLESS';
+      final mode = switch (game.engine?.mode) {
+        GameMode.daily => 'DAILY',
+        GameMode.story => 'STORY',
+        _ => 'ENDLESS',
+      };
       var tp = _tp(TextSpan(text: muted ? '$mode  \u00b7  MUTED' : mode, style: BP.label(11, color: muted ? BP.signal : BP.onInk)), 400, maxLines: 1, align: TextAlign.left);
       if (tp.width > width && muted) {
         tp = _tp(TextSpan(text: 'MUTED', style: BP.label(11, color: BP.signal)), 400, maxLines: 1, align: TextAlign.left);
@@ -328,7 +362,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
   (TextPainter, TextPainter, TextPainter?) _hudParts(Round? round) {
     final n = ((round?.ctx.roundIndex ?? 0) + 1).toString().padLeft(2, '0');
     final label = _tp(TextSpan(text: 'ROUND', style: BP.label(wide ? 12 : 11, color: BP.onInk)), 200, maxLines: 1, align: TextAlign.left);
-    final number = _tp(TextSpan(text: n, style: BP.d(wide ? 26 : 22, color: BP.paper, spacing: 1)), 200, maxLines: 1, align: TextAlign.left);
+    final number = _tp(TextSpan(text: n, style: BP.d(wide ? 26 : 22, color: BP.ink, spacing: 1)), 200, maxLines: 1, align: TextAlign.left);
     final practice = game.isPractice
         ? _tp(TextSpan(text: 'PRACTICE', style: BP.label(10, color: BP.onInk)), 200, maxLines: 1, align: TextAlign.left)
         : null;
@@ -343,31 +377,12 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     return w;
   }
 
-  /// Diagonal black and yellow hazard stripes filling [r].
-  void _drawTape(Canvas canvas, Rect r) {
-    canvas.save();
-    canvas.clipRect(r);
-    canvas.drawRect(r, _fill..color = BP.hazard);
-    final step = r.height * 2.2;
-    final path = Path();
-    for (var x = r.left - r.height; x < r.right + r.height; x += step) {
-      path
-        ..moveTo(x, r.bottom)
-        ..lineTo(x + step / 2, r.bottom)
-        ..lineTo(x + step / 2 + r.height, r.top)
-        ..lineTo(x + r.height, r.top)
-        ..close();
-    }
-    canvas.drawPath(path, _fill..color = BP.paper);
-    canvas.restore();
-  }
-
   // --- Instruction -------------------------------------------------------------
 
   static const _negations = {"DON'T", 'NOT', 'NEVER', 'NO', 'BOTH', 'EVERY'};
 
-  /// Key words get a highlighter-marker block behind them: negations in
-  /// red, colour names in their own colour (so YELLOW is readable on paper).
+  /// Key words get a solid block behind them: negations in alarm red, colour
+  /// names in their own colour (so BLUE is readable on the dark screen).
   List<TextSpan> _emphasise(String text, TextStyle base) {
     final spans = <TextSpan>[];
     final words = text.split(' ');
@@ -384,7 +399,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
         spans.add(TextSpan(text: last ? w : '$w ', style: base));
       } else {
         final onLight = c.computeLuminance() > 0.45;
-        spans.add(TextSpan(text: '\u2009$w\u2009', style: base.copyWith(color: onLight ? BP.paper : const Color(0xFFFFFFFF), background: Paint()..color = c)));
+        spans.add(TextSpan(text: '\u2009$w\u2009', style: base.copyWith(color: onLight ? BP.ink : const Color(0xFFFFFFFF), background: Paint()..color = c)));
         if (!last) spans.add(TextSpan(text: ' ', style: base));
       }
     }
@@ -417,21 +432,22 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     final hint = round.hint;
     final dim = game.phase == GamePhase.roundWon;
     final tp = _instruction(round, r, dim);
-    // The hint sits on a small black tag under the instruction, so it reads
-    // as a footnote and never competes with the instruction itself.
+    // The hint sits on a small dark panel with a hairline rim under the
+    // instruction, so it reads as a footnote and never competes with it.
     final hintTp = hint.isEmpty
         ? null
-        : _tp(TextSpan(text: hint.toUpperCase(), style: BP.label(wide ? 12 : 11, color: round.isCalm ? BP.calmBg : BP.cream)), r.width - 20, maxLines: 1);
+        : _tp(TextSpan(text: hint.toUpperCase(), style: BP.label(wide ? 12 : 11, color: round.isCalm ? BP.calm : BP.muted)), r.width - 20, maxLines: 1);
     final total = tp.height + (hintTp == null ? 0 : hintTp.height + 16);
     final top = r.center.dy - total / 2;
     tp.paint(canvas, Offset(r.center.dx - tp.width / 2, top));
     if (hintTp != null) {
       final y = top + tp.height + 10;
       final tag = Rect.fromLTWH(r.center.dx - hintTp.width / 2 - 9, y, hintTp.width + 18, hintTp.height + 6);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(tag, const Radius.circular(4)),
-        _fill..color = round.isCalm ? BP.calm : BP.paper,
-      );
+      final tagR = RRect.fromRectAndRadius(tag, const Radius.circular(BP.radius));
+      canvas.drawRRect(tagR, _fill..color = round.isCalm ? BP.calmBg : BP.inkSoft);
+      canvas.drawRRect(tagR, _stroke
+        ..strokeWidth = 1
+        ..color = round.isCalm ? BP.calm.withValues(alpha: 0.4) : BP.line);
       hintTp.paint(canvas, Offset(tag.left + 9, y + 3));
     }
   }
@@ -473,13 +489,21 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
 
   final Paint _fill = Paint();
   final Paint _stroke = Paint()..style = PaintingStyle.stroke;
-  final Paint _shine = Paint()..color = const Color(0x59FFFFFF);
-  static const _ground = Color(0x24000000);
+  final Paint _shine = Paint()..color = const Color(0x2EFFFFFF);
 
-  /// An arcade button: a thick black outline, a darker skirt underneath and
-  /// a face that physically sinks into it when pressed, with one flat shine.
+  /// A faint pool of the button's own colour on the floor under it, so a
+  /// button reads as lit hardware on the dark screen instead of a hard
+  /// cartoon shadow.
+  static Color _glow(Color face) => face.withValues(alpha: 0.16);
+
+  /// Button rims: a machined near-black edge, thinner than the old cartoon
+  /// outline.
+  static double _rimWidth(double r) => BP.outline(r) * 0.6;
+
+  /// A panel button: a near-black rim, a darker skirt underneath and a face
+  /// that physically sinks into it when pressed, with one dim flat shine.
   void _drawRoundButton(Canvas canvas, GameButton b, Offset centre, double r, Color face, double hover, double press) {
-    final ow = BP.outline(r);
+    final ow = _rimWidth(r);
     final depth = b.spent ? 0.0 : r * 0.16;
     final sink = depth * press;
     final top = centre.translate(0, -depth * 0.5 + sink);
@@ -491,13 +515,13 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
         ..color = BP.paper.withValues(alpha: hover));
     }
     if (depth > 0) {
-      // A hard, flat shadow on the paper so the button sits on the page.
-      canvas.drawCircle(centre.translate(r * 0.08, depth * 0.5 + r * 0.1), r, _fill..color = _ground);
+      // Its own light spilling on the floor so the button sits on the panel.
+      canvas.drawCircle(centre.translate(0, depth * 0.5 + r * 0.08), r * 1.12, _fill..color = _glow(face));
       final skirt = centre.translate(0, depth * 0.5);
-      canvas.drawCircle(skirt, r, _fill..color = BP.shade(face, 0.42));
+      canvas.drawCircle(skirt, r, _fill..color = BP.shade(face, 0.55));
       canvas.drawCircle(skirt, r, _stroke
         ..strokeWidth = ow
-        ..color = BP.paper);
+        ..color = BP.rim);
       canvas.drawRect(Rect.fromLTRB(centre.dx - r, top.dy, centre.dx + r, skirt.dy), _fill..color = BP.shade(face, 0.42));
       canvas.drawLine(Offset(centre.dx - r, top.dy), Offset(centre.dx - r, skirt.dy), _stroke..strokeWidth = ow);
       canvas.drawLine(Offset(centre.dx + r, top.dy), Offset(centre.dx + r, skirt.dy), _stroke);
@@ -505,7 +529,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     canvas.drawCircle(top, r, _fill..color = face);
     canvas.drawCircle(top, r, _stroke
       ..strokeWidth = ow
-      ..color = b.spent ? BP.faint : BP.paper);
+      ..color = b.spent ? BP.faint : BP.rim);
     canvas.save();
     canvas.translate(top.dx, top.dy);
     if (!b.spent) {
@@ -524,11 +548,11 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
   }
 
   void _drawKeycap(Canvas canvas, GameButton b, Offset centre, double r, Color face, double hover, double press) {
-    final ow = BP.outline(r);
+    final ow = _rimWidth(r);
     final depth = b.spent ? 0.0 : r * 0.18;
     final sink = depth * press;
     final cap = _keyRect(centre, r);
-    final radius = Radius.circular(r * 0.16);
+    final radius = Radius.circular(r * 0.1);
     final topRect = cap.shift(Offset(0, -depth * 0.5 + sink));
     if (b.highlighted) {
       canvas.drawRRect(RRect.fromRectAndRadius(cap.inflate(ow * 2.6), radius), _fill..color = BP.hazard);
@@ -538,18 +562,18 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
         ..color = BP.paper.withValues(alpha: hover));
     }
     if (depth > 0) {
-      canvas.drawRRect(RRect.fromRectAndRadius(cap.shift(Offset(r * 0.08, depth * 0.5 + r * 0.1)), radius), _fill..color = _ground);
+      canvas.drawRRect(RRect.fromRectAndRadius(cap.shift(Offset(0, depth * 0.5 + r * 0.08)).inflate(r * 0.1), radius), _fill..color = _glow(face));
       final under = RRect.fromRectAndRadius(Rect.fromLTRB(cap.left, topRect.top, cap.right, cap.bottom + depth * 0.5), radius);
-      canvas.drawRRect(under, _fill..color = BP.shade(face, 0.42));
+      canvas.drawRRect(under, _fill..color = BP.shade(face, 0.55));
       canvas.drawRRect(under, _stroke
         ..strokeWidth = ow
-        ..color = BP.paper);
+        ..color = BP.rim);
     }
     final rr = RRect.fromRectAndRadius(topRect, radius);
     canvas.drawRRect(rr, _fill..color = face);
     canvas.drawRRect(rr, _stroke
       ..strokeWidth = ow
-      ..color = b.spent ? BP.faint : BP.paper);
+      ..color = b.spent ? BP.faint : BP.rim);
     canvas.save();
     canvas.translate(topRect.center.dx, topRect.center.dy);
     _drawLabel(canvas, b, r * 0.95);
@@ -654,7 +678,6 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
   }
 
   /// Grids get one clock: a frame around all their buttons.
-  /// Grids get one clock: a hairline frame around all their buttons.
   void _drawFrameTimer(Canvas canvas, Round round, double f, double exit) {
     final vis = round.buttons.where((b) => b.visible).toList();
     if (vis.isEmpty || round.verdict != Verdict.pending) return;
@@ -664,7 +687,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
       final rr = Rect.fromCircle(center: c, radius: _radius(b));
       box = box == Rect.zero ? rr : box.expandToInclude(rr);
     }
-    final rr = RRect.fromRectAndRadius(box.inflate(26), const Radius.circular(10));
+    final rr = RRect.fromRectAndRadius(box.inflate(26), const Radius.circular(BP.radius * 2));
     final path = _rrectFromTop(rr);
     final metric = path.computeMetrics().first;
     canvas.drawPath(path, _stroke
@@ -768,7 +791,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
 
   // --- Feedback --------------------------------------------------------------
 
-  /// Failing: a white frame, then the screen floods solid red.
+  /// Failing: a white frame, then the screen floods alarm red.
   void _drawFailFlash(Canvas canvas, Rect screen) {
     if (_failAge < 0.05) {
       canvas.drawRect(screen, Paint()..color = const Color(0xCCFFFFFF));
@@ -788,7 +811,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     if (area.width < 24) return;
     final alarm = game.bannerIsAlarm;
     final text = game.banner.toUpperCase();
-    final colour = alarm ? BP.signal : const Color(0xFFF4EEE2);
+    final colour = alarm ? BP.signal : BP.cream;
     // The largest size that fits on one line (down to 8), then an ellipsis.
     TextPainter? tp;
     for (var size = alarm ? 22.0 : 20.0; size >= 12; size -= 1) {

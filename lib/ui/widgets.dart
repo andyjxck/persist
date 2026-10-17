@@ -6,22 +6,22 @@ import 'theme.dart';
 
 /// How a [StarkAction] looks.
 enum ActionLook {
-  /// A small black pill (settings toggles, the phone's sound switch).
+  /// A small square-edged switch (settings toggles, the phone's sound switch).
   chip,
 
-  /// The main action on paper: red slab, white type, hard black shadow.
+  /// The main action: alarm-red slab, white type.
   primary,
 
-  /// Other actions: white slab, black type, hard black shadow.
+  /// Other actions: dark slab with a hairline frame, pale type.
   secondary,
 
-  /// The main action on a red screen: hazard-yellow slab, black type.
+  /// A warning action: amber slab, black type.
   hazard,
 }
 
-/// A chunky sticker button with a thick outline and a hard offset shadow.
-/// It lifts a hair under the mouse, presses down into its shadow, and shows
-/// a separate black focus ring when reached with the keyboard.
+/// A flat, machined slab button. It brightens under the mouse, sinks a
+/// pixel when pressed, and shows a separate amber focus ring when reached
+/// with the keyboard.
 class StarkAction extends StatefulWidget {
   const StarkAction({
     super.key,
@@ -39,15 +39,15 @@ class StarkAction extends StatefulWidget {
   final VoidCallback? onTap;
   final double size;
 
-  /// Text colour for [ActionLook.chip].
+  /// Label colour for [ActionLook.chip].
   final Color color;
   final String? semantic;
   final ActionLook look;
 
-  /// A keyboard shortcut drawn as a little keycap inside the slab.
+  /// Shown as a small key inside the button (desktop shortcuts).
   final String? keyHint;
 
-  /// Chips only: draws an on/off light before the label.
+  /// For on/off switches: shows a lamp, lit when on.
   final bool? lit;
 
   @override
@@ -60,15 +60,15 @@ class _StarkActionState extends State<StarkAction> {
   bool _down = false;
 
   Widget _focusRing(double radius) => Positioned(
-    left: -5,
-    top: -5,
-    right: -5,
-    bottom: -5,
+    left: -4,
+    top: -4,
+    right: -4,
+    bottom: -4,
     child: IgnorePointer(
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: BP.paper, width: 2.5),
-          borderRadius: BorderRadius.circular(radius + 5),
+          border: Border.all(color: BP.hazard, width: 2),
+          borderRadius: BorderRadius.circular(radius + 3),
         ),
       ),
     ),
@@ -89,8 +89,9 @@ class _StarkActionState extends State<StarkAction> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: _down ? BP.inkSoft : BP.paper,
-                borderRadius: BorderRadius.circular(999),
+                color: _down ? BP.ink : BP.inkSoft,
+                border: Border.all(color: _hot ? BP.paper.withValues(alpha: 0.6) : BP.line, width: 1),
+                borderRadius: BorderRadius.circular(BP.radius),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -103,55 +104,50 @@ class _StarkActionState extends State<StarkAction> {
                         shape: BoxShape.circle,
                         color: lit ? BP.hazard : null,
                         border: lit ? null : Border.all(color: BP.onInk, width: 1.5),
+                        boxShadow: lit ? [BoxShadow(color: BP.hazard.withValues(alpha: 0.6), blurRadius: 6)] : null,
                       ),
                     ),
                     const SizedBox(width: 6),
                   ],
-                  Text(widget.label, style: BP.label(widget.size, color: _hot ? BP.hazard : widget.color)),
+                  Text(widget.label, style: BP.label(widget.size, color: _hot ? BP.paper : widget.color)),
                 ],
               ),
             ),
-            if (_focus) _focusRing(14),
+            if (_focus) _focusRing(BP.radius),
           ],
         ),
       );
     } else {
-      final (Color face, Color hotFace, Color ink) = switch (look) {
-        ActionLook.primary => (BP.signal, BP.shade(BP.signal, 0.1), const Color(0xFFFFFFFF)),
-        ActionLook.hazard => (BP.hazard, BP.tint(BP.hazard, 0.45), BP.paper),
-        _ => (const Color(0xFFFFFFFF), BP.hazard, BP.paper),
+      final (Color face, Color hotFace, Color ink, Color? frame) = switch (look) {
+        ActionLook.primary => (BP.signal, BP.tint(BP.signal, 0.12), const Color(0xFFFFFFFF), null),
+        ActionLook.hazard => (BP.hazard, BP.tint(BP.hazard, 0.2), BP.ink, null),
+        _ => (BP.inkSoft, BP.shade(BP.paper, 0.78), BP.paper, BP.paper.withValues(alpha: _hot ? 0.75 : 0.32)),
       };
-      final depth = widget.size < 13 ? 4.0 : 6.0;
-      final sink = _down ? depth : (_hot ? -1.5 : 0.0);
       final hint = widget.keyHint;
       body = Padding(
-        padding: EdgeInsets.fromLTRB(6, 6, 6 + depth, 6 + depth),
+        padding: const EdgeInsets.all(6),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Positioned.fill(
-              left: depth,
-              top: depth,
-              right: -depth,
-              bottom: -depth,
-              child: Container(decoration: BoxDecoration(color: BP.paper, borderRadius: BorderRadius.circular(BP.radius))),
-            ),
             Transform.translate(
-              offset: Offset(sink, sink),
+              offset: Offset(0, _down ? 1.5 : 0),
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: widget.size * 1.4, vertical: widget.size * 0.7),
                 decoration: BoxDecoration(
-                  color: _hot ? hotFace : face,
-                  border: Border.all(color: BP.paper, width: 3),
+                  color: _down ? BP.shade(face, 0.2) : (_hot ? hotFace : face),
+                  border: frame == null ? null : Border.all(color: frame, width: 1.5),
                   borderRadius: BorderRadius.circular(BP.radius),
+                  boxShadow: look == ActionLook.primary && !_down
+                      ? [BoxShadow(color: BP.signal.withValues(alpha: _hot ? 0.45 : 0.25), blurRadius: _hot ? 18 : 12)]
+                      : null,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(widget.label, style: BP.d(widget.size * 1.6, color: ink, spacing: 1)),
+                    Text(widget.label, style: BP.d(widget.size * 1.6, color: ink, spacing: 1.5)),
                     if (hint != null) ...[
                       SizedBox(width: widget.size * 0.7),
-                      KeyCap(hint, size: (widget.size * 0.62).clamp(8.0, 11.0), dark: look != ActionLook.primary),
+                      KeyCap(hint, size: (widget.size * 0.62).clamp(8.0, 11.0), dark: look != ActionLook.secondary),
                     ],
                   ],
                 ),
@@ -193,22 +189,20 @@ class KeyCap extends StatelessWidget {
   final String label;
   final double size;
 
-  /// Black key with cream type (for light surfaces); otherwise cream key.
+  /// A dark key with pale type (for bright slabs); otherwise a pale outline
+  /// key for dark surfaces.
   final bool dark;
 
   @override
   Widget build(BuildContext context) {
-    final face = dark ? BP.paper : BP.cream;
-    final ink = dark ? BP.cream : BP.paper;
     return Container(
       padding: EdgeInsets.fromLTRB(size * 0.6, size * 0.28, size * 0.6, size * 0.22),
       decoration: BoxDecoration(
-        color: face,
-        border: Border.all(color: BP.paper, width: 1.5),
-        borderRadius: BorderRadius.circular(size * 0.4),
-        boxShadow: [BoxShadow(color: dark ? BP.shade(BP.muted, 0.2) : BP.paper, offset: const Offset(0, 2))],
+        color: dark ? const Color(0x55000000) : BP.ink,
+        border: Border.all(color: dark ? const Color(0x66000000) : BP.paper.withValues(alpha: 0.35), width: 1),
+        borderRadius: BorderRadius.circular(2),
       ),
-      child: Text(label, style: BP.label(size, color: ink)),
+      child: Text(label, style: BP.label(size, color: dark ? const Color(0xFFFFFFFF) : BP.paper)),
     );
   }
 }
@@ -231,7 +225,7 @@ class KeyHints extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            KeyCap(key, size: 10, dark: true),
+            KeyCap(key, size: 10),
             const SizedBox(width: 7),
             Text(what, style: BP.label(11, color: color)),
           ],
@@ -240,10 +234,10 @@ class KeyHints extends StatelessWidget {
   );
 }
 
-/// A tilted sticker: a slab of colour with a black outline and a hard
-/// shadow, for stamps such as NEW BEST.
+/// A stamped notice: a square frame in one colour, for marks such as NEW
+/// BEST. Straight, not tilted, unless asked.
 class Sticker extends StatelessWidget {
-  const Sticker({super.key, required this.label, this.size = 22, this.color = BP.hazard, this.ink = BP.paper, this.angle = -0.08});
+  const Sticker({super.key, required this.label, this.size = 22, this.color = BP.hazard, this.ink = BP.ink, this.angle = 0});
   final String label;
   final double size;
   final Color color;
@@ -254,81 +248,114 @@ class Sticker extends StatelessWidget {
   Widget build(BuildContext context) => Transform.rotate(
     angle: angle,
     child: Container(
-      padding: EdgeInsets.symmetric(horizontal: size * 0.55, vertical: size * 0.22),
-      decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: BP.paper, width: 3),
-        borderRadius: BorderRadius.circular(6),
-        boxShadow: const [BoxShadow(color: BP.paper, offset: Offset(4, 4))],
-      ),
-      child: Text(label, style: BP.d(size, color: ink, spacing: 1)),
+      padding: EdgeInsets.symmetric(horizontal: size * 0.45, vertical: size * 0.16),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+      child: Text(label, style: BP.d(size, color: ink, spacing: 1.5)),
     ),
   );
 }
 
-/// Printed halftone dots over whatever is behind (one shader fill).
+/// Faint scanlines over a whole area, like an old monitor. One shader fill.
 class Halftone extends StatelessWidget {
-  const Halftone({super.key, this.color = const Color(0x14000000)});
+  const Halftone({super.key, this.color = const Color(0x0DFFFFFF)});
   final Color color;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: RepaintBoundary(child: CustomPaint(painter: _DotsPainter(color), size: Size.infinite)),
-  );
+  Widget build(BuildContext context) =>
+      IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _LinesPainter(color), size: Size.infinite)));
 }
 
-class _DotsPainter extends CustomPainter {
-  const _DotsPainter(this.color);
+class _LinesPainter extends CustomPainter {
+  _LinesPainter(this.color);
   final Color color;
 
   @override
-  void paint(Canvas canvas, Size size) => canvas.drawRect(Offset.zero & size, BP.dots(color));
+  void paint(Canvas canvas, Size size) => canvas.drawRect(Offset.zero & size, BP.scanlines(color));
 
   @override
-  bool shouldRepaint(_DotsPainter old) => old.color != color;
+  bool shouldRepaint(_LinesPainter old) => old.color != color;
 }
 
-/// A strip of diagonal black and yellow hazard tape.
+/// A warning strip: a thin alarm-red rule with short dashes under it.
 class HazardTape extends StatelessWidget {
   const HazardTape({super.key, required this.height});
   final double height;
 
   @override
-  Widget build(BuildContext context) => SizedBox(height: height, width: double.infinity, child: const CustomPaint(painter: _TapePainter()));
+  Widget build(BuildContext context) => SizedBox(height: height, child: CustomPaint(painter: _TapePainter(), size: Size.infinite));
 }
 
 class _TapePainter extends CustomPainter {
-  const _TapePainter();
-
   @override
   void paint(Canvas canvas, Size size) {
-    final r = Offset.zero & size;
-    canvas.drawRect(r, Paint()..color = BP.hazard);
-    final step = size.height * 2.2;
-    final path = Path();
-    for (var x = -size.height; x < size.width + size.height; x += step) {
-      path
-        ..moveTo(x, r.bottom)
-        ..lineTo(x + step / 2, r.bottom)
-        ..lineTo(x + step / 2 + size.height, 0)
-        ..lineTo(x + size.height, 0)
-        ..close();
+    canvas.drawRect(Offset.zero & size, Paint()..color = BP.ink);
+    final rule = math.max(1.0, size.height * 0.25);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, rule), Paint()..color = BP.signal);
+    final dash = Paint()..color = BP.signal.withValues(alpha: 0.35);
+    final y = rule + (size.height - rule) * 0.35;
+    final h = math.max(1.0, (size.height - rule) * 0.4);
+    for (var x = 0.0; x < size.width; x += 14) {
+      canvas.drawRect(Rect.fromLTWH(x, y, 7, h), dash);
     }
-    canvas.drawPath(path, Paint()..color = BP.paper);
-    // A hard black edge where the tape meets the paper.
-    final edge = Paint()..color = BP.paper;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 2), edge);
-    canvas.drawRect(Rect.fromLTWH(0, size.height - 2, size.width, 2), edge);
   }
 
   @override
   bool shouldRepaint(_TapePainter old) => false;
 }
 
-/// The big red arcade button on the start screen, drawn the same way the
-/// game draws its buttons: outline, skirt, a face that sinks, one shine.
-/// With [attract] on, a ring ripples out of the bezel now and then to say
-/// "press me" (never with reduce motion).
+/// A small lamp that blinks like a recording light. Holds still with
+/// reduce motion.
+class StatusLamp extends StatefulWidget {
+  const StatusLamp({super.key, this.size = 8, this.color = BP.signal});
+  final double size;
+  final Color color;
+
+  @override
+  State<StatusLamp> createState() => _StatusLampState();
+}
+
+class _StatusLampState extends State<StatusLamp> with SingleTickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (still) {
+      _blink.stop();
+      _blink.value = 0;
+    } else if (!_blink.isAnimating) {
+      _blink.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _blink.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _blink,
+    builder: (context, _) {
+      final on = _blink.value < 0.55;
+      return Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: on ? widget.color : BP.shade(widget.color, 0.7),
+          boxShadow: on ? [BoxShadow(color: widget.color.withValues(alpha: 0.7), blurRadius: widget.size)] : null,
+        ),
+      );
+    },
+  );
+}
+
+/// The big button on the start screen: a matte red emergency button in a
+/// dark steel collar, with a slow heartbeat glow that invites a press. The
+/// heartbeat stops entirely with reduce motion.
 class VoidButton extends StatefulWidget {
   const VoidButton({super.key, required this.size, required this.onTap, this.semantic = 'Start', this.label = 'PRESS', this.attract = true});
   final double size;
@@ -344,23 +371,23 @@ class VoidButton extends StatefulWidget {
 class _VoidButtonState extends State<VoidButton> with SingleTickerProviderStateMixin {
   bool _down = false;
   bool _hot = false;
-  late final AnimationController _ripple = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300));
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     if (widget.attract && !still) {
-      if (!_ripple.isAnimating) _ripple.repeat();
+      if (!_pulse.isAnimating) _pulse.repeat();
     } else {
-      _ripple.stop();
-      _ripple.value = 0;
+      _pulse.stop();
+      _pulse.value = 0;
     }
   }
 
   @override
   void dispose() {
-    _ripple.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -385,9 +412,9 @@ class _VoidButtonState extends State<VoidButton> with SingleTickerProviderStateM
             height: size * 1.3,
             child: RepaintBoundary(
               child: AnimatedBuilder(
-                animation: _ripple,
+                animation: _pulse,
                 builder: (context, _) => CustomPaint(
-                  painter: _ArcadePainter(down: _down, hot: _hot, label: widget.label, ripple: _ripple.isAnimating ? _ripple.value : -1),
+                  painter: _PanicButtonPainter(down: _down, hot: _hot, label: widget.label, beat: _pulse.isAnimating ? heartbeat(_pulse.value) : 0),
                 ),
               ),
             ),
@@ -398,68 +425,93 @@ class _VoidButtonState extends State<VoidButton> with SingleTickerProviderStateM
   }
 }
 
-class _ArcadePainter extends CustomPainter {
-  _ArcadePainter({required this.down, required this.label, this.hot = false, this.ripple = -1});
+/// A heartbeat envelope over one beat (0..1): a strong thump, a smaller
+/// one just after, then quiet. Returns 0..1.
+double heartbeat(double t) {
+  double bump(double centre, double width) {
+    final d = (t - centre) / width;
+    return d.abs() >= 1 ? 0 : (1 - d * d) * (1 - d * d);
+  }
+
+  return math.max(bump(0.08, 0.08), bump(0.28, 0.09) * 0.6).clamp(0.0, 1.0);
+}
+
+class _PanicButtonPainter extends CustomPainter {
+  _PanicButtonPainter({required this.down, required this.hot, required this.label, required this.beat});
   final bool down;
   final bool hot;
   final String label;
 
-  /// 0..1 through the attract ripple, or negative for none.
-  final double ripple;
+  /// Heartbeat glow, 0..1.
+  final double beat;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final r = size.shortestSide / 1.3 / 2;
-    final ow = BP.outline(r);
-    final fill = Paint();
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = ow
-      ..color = BP.paper;
-    // Attract ripple: a black ring leaving the bezel in the first half of
-    // each cycle, then rest.
-    if (ripple >= 0 && ripple < 0.55 && !down) {
-      final t = ripple / 0.55;
-      canvas.drawCircle(
-        c,
-        r * (1.26 + 0.3 * t),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = ow * (1 - t * 0.6)
-          ..color = BP.paper.withValues(alpha: 0.55 * (1 - t)),
-      );
+
+    // The glow: a red halo that thumps with the heartbeat.
+    final glow = 0.18 + beat * 0.5 + (hot ? 0.15 : 0);
+    canvas.drawCircle(
+      c,
+      r * (1.12 + beat * 0.06),
+      Paint()
+        ..color = BP.signal.withValues(alpha: glow.clamp(0.0, 1.0) * 0.55)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.22),
+    );
+
+    // Steel collar.
+    canvas.drawCircle(c, r * 1.08, Paint()..color = const Color(0xFF1D2024));
+    canvas.drawCircle(
+      c,
+      r * 1.08,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = const Color(0xFF3A3E44),
+    );
+    // Collar marks: twelve short ticks, like a dial.
+    final tick = Paint()
+      ..color = const Color(0xFF4A4F56)
+      ..strokeWidth = math.max(1.0, r * 0.015);
+    for (var i = 0; i < 12; i++) {
+      final a = i * math.pi / 6;
+      final d = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + d * (r * 0.99), c + d * (r * 1.04), tick);
     }
-    // Bezel: hazard ring with a black rim and a hard shadow.
-    canvas.drawCircle(c.translate(r * 0.06, r * 0.1), r * 1.22, fill..color = BP.paper);
-    canvas.drawCircle(c, r * 1.22, fill..color = BP.hazard);
-    canvas.drawCircle(c, r * 1.22, stroke);
-    // Bolts on the bezel, like a panel-mounted switch.
-    for (var k = 0; k < 4; k++) {
-      final a = math.pi / 4 + k * math.pi / 2;
-      final bolt = c + Offset(math.cos(a), math.sin(a)) * r * 1.11;
-      canvas.drawCircle(bolt, r * 0.045, fill..color = BP.paper);
-    }
-    final depth = r * 0.2;
-    final sink = down ? depth : (hot ? depth * 0.25 : 0.0);
-    final skirt = c.translate(0, depth * 0.5);
-    final top = c.translate(0, -depth * 0.5 + sink);
-    final side = BP.shade(BP.signal, 0.42);
-    canvas.drawCircle(skirt, r, fill..color = side);
-    canvas.drawCircle(skirt, r, stroke);
-    canvas.drawRect(Rect.fromLTRB(c.dx - r, top.dy, c.dx + r, skirt.dy), fill..color = side);
-    canvas.drawLine(Offset(c.dx - r, top.dy), Offset(c.dx - r, skirt.dy), stroke);
-    canvas.drawLine(Offset(c.dx + r, top.dy), Offset(c.dx + r, skirt.dy), stroke);
-    canvas.drawCircle(top, r, fill..color = BP.signal);
-    canvas.drawCircle(top, r, stroke);
-    canvas.drawOval(Rect.fromCenter(center: top.translate(-r * 0.36, -r * 0.44), width: r * 0.5, height: r * 0.24), fill..color = const Color(0x66FFFFFF));
+    // Recess.
+    canvas.drawCircle(c, r * 0.96, Paint()..color = BP.rim);
+
+    // The button: matte red, darker towards its edge, pressed in when down.
+    final face = down ? BP.shade(BP.signal, 0.25) : (hot ? BP.tint(BP.signal, 0.06) : BP.signal);
+    final br = r * (down ? 0.86 : 0.9);
+    canvas.drawCircle(
+      c,
+      br,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0, -0.3),
+          radius: 1,
+          colors: [face, BP.shade(face, 0.45)],
+        ).createShader(Rect.fromCircle(center: c, radius: br)),
+    );
+    // A thin rim catching the light.
+    canvas.drawCircle(
+      c,
+      br,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, r * 0.02)
+        ..color = BP.tint(face, 0.25).withValues(alpha: 0.5),
+    );
+
     final tp = TextPainter(
-      text: TextSpan(text: label, style: BP.d(r * 0.46, color: const Color(0xFFFFFFFF), spacing: 1)),
+      text: TextSpan(text: label, style: BP.d(r * 0.34, color: const Color(0xFFFFFFFF), spacing: r * 0.03)),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, top - Offset(tp.width / 2, tp.height / 2));
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
   }
 
   @override
-  bool shouldRepaint(_ArcadePainter old) => old.down != down || old.hot != hot || old.label != label || old.ripple != ripple;
+  bool shouldRepaint(_PanicButtonPainter old) => old.down != down || old.hot != hot || old.label != label || old.beat != beat;
 }

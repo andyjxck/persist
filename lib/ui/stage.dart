@@ -4,7 +4,9 @@ import 'package:flutter/widgets.dart';
 
 import '../game/button_panic_game.dart';
 import 'game_over_overlay.dart';
+import 'leaderboard_overlay.dart';
 import 'menu_overlay.dart';
+import 'story_overlay.dart';
 
 /// The game canvas with raw input wired up: pointers (no gesture delays, so
 /// holds, flicks and multi-touch are reliable), mouse hover and the cursor.
@@ -45,6 +47,12 @@ class GameStage extends StatelessWidget {
           overlayBuilderMap: {
             'menu': (context, game) => MenuOverlay(game: game),
             'gameOver': (context, game) => GameOverOverlay(game: game),
+            // Side panels over the menu or the result screen. Only one is
+            // open at a time (game.openPanel); the leaderboard is never
+            // opened when the build has no leaderboard project.
+            'story': (context, game) => StoryOverlay(game: game),
+            'leaderboard': (context, game) =>
+                game.leaderboards.enabled ? LeaderboardOverlay(game: game) : const SizedBox.shrink(),
           },
           initialActiveOverlays: const ['menu'],
         ),

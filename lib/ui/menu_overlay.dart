@@ -6,10 +6,10 @@ import '../logic/run_engine.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// The start screen: a warning label for a button. The big red button
-/// starts today's Daily; scores sit on a ticket; Endless is the one other
-/// action. On the wide web stage it is a two-column poster (words left,
-/// button right); on a phone it stacks.
+/// The start screen: a control panel at night. The big red button starts
+/// today's Daily; scores sit on a readout; Endless and Story sit under it,
+/// and the leaderboards when they're switched on. On the wide web stage it
+/// is two columns (words left, button right); on a phone it stacks.
 class MenuOverlay extends StatefulWidget {
   const MenuOverlay({super.key, required this.game});
   final ButtonPanicGame game;
@@ -36,9 +36,10 @@ class _MenuOverlayState extends State<MenuOverlay> {
       child: Stack(
         children: [
           const Positioned.fill(child: Halftone()),
+          const Positioned.fill(child: _Vignette()),
           Column(
             children: [
-              const HazardTape(height: 16),
+              const HazardTape(height: 6),
               Expanded(
                 child: SafeArea(
                   top: false,
@@ -56,7 +57,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
                   ),
                 ),
               ),
-              const HazardTape(height: 16),
+              const HazardTape(height: 6),
             ],
           ),
         ],
@@ -73,13 +74,31 @@ class _MenuOverlayState extends State<MenuOverlay> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              wide ? 'DAILY RUN  \u00b7  $_today' : _today,
-              style: BP.label(11, color: BP.muted),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                const StatusLamp(size: 7),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    wide ? 'PANEL 7  \u00b7  LIVE  \u00b7  $_today' : _today,
+                    style: BP.label(11, color: BP.muted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
+          if (game.leaderboards.enabled && !wide)
+            StarkAction(
+              key: const Key('boardsChip'),
+              look: ActionLook.chip,
+              label: 'BOARDS',
+              size: 10,
+              color: BP.cream,
+              semantic: 'Leaderboards',
+              onTap: () => game.openPanel('leaderboard'),
+            ),
           if (!kIsWeb)
             StarkAction(
               look: ActionLook.chip,
@@ -104,44 +123,28 @@ class _MenuOverlayState extends State<MenuOverlay> {
     );
   }
 
-  /// BUTTON / PANIC: black over a hazard highlighter, then red with a hard
-  /// black shadow, tilted.
+  /// BUTTON / PANIC: bone white, then alarm red with a faint misregistered
+  /// double behind it, like a screen that's starting to fail. Straight.
   Widget _title(double size, {bool left = false}) {
     return Semantics(
       header: true,
       label: 'Button Panic',
       child: ExcludeSemantics(
-        child: Transform.rotate(
-          angle: -0.045,
-          alignment: left ? Alignment.centerLeft : Alignment.center,
-          child: Column(
-            crossAxisAlignment: left ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    left: -size * 0.06,
-                    right: -size * 0.06,
-                    bottom: size * 0.06,
-                    height: size * 0.3,
-                    child: const ColoredBox(color: BP.hazard),
-                  ),
-                  Text('BUTTON', style: BP.d(size, height: 0.92)),
-                ],
-              ),
-              Stack(
-                children: [
-                  Transform.translate(
-                    offset: Offset(size * 0.045, size * 0.045),
-                    child: Text('PANIC', style: BP.d(size, height: 0.92)),
-                  ),
-                  Text('PANIC', style: BP.d(size, color: BP.signal, height: 0.92)),
-                ],
-              ),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: left ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('BUTTON', style: BP.d(size, height: 0.92, spacing: size * 0.01)),
+            Stack(
+              children: [
+                Transform.translate(
+                  offset: Offset(size * 0.03, 0),
+                  child: Text('PANIC', style: BP.d(size, color: BP.blood, height: 0.92, spacing: size * 0.01)),
+                ),
+                Text('PANIC', style: BP.d(size, color: BP.signal, height: 0.92, spacing: size * 0.01)),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -155,7 +158,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: BP.paper, borderRadius: BorderRadius.circular(4)),
+          decoration: BoxDecoration(border: Border.all(color: BP.hazard, width: 1.5), borderRadius: BorderRadius.circular(2)),
           child: Text('WARNING', style: BP.label(11, color: BP.hazard)),
         ),
         const SizedBox(width: BP.s3),
@@ -177,29 +180,28 @@ class _MenuOverlayState extends State<MenuOverlay> {
       ('DAILY BEST', show(daily?.bestScore)),
       ('ENDLESS BEST', show(best)),
     ];
-    final valueSize = wide ? 34.0 : 26.0;
+    final valueSize = wide ? 32.0 : 24.0;
     Widget cell((String, String) c) => Padding(
       padding: EdgeInsets.symmetric(horizontal: wide ? BP.s4 + 2 : BP.s3, vertical: wide ? BP.s3 : BP.s2 + 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          FittedBox(fit: BoxFit.scaleDown, child: Text(c.$1, style: BP.label(wide ? 10.5 : 9.5, color: BP.muted))),
+          FittedBox(fit: BoxFit.scaleDown, child: Text(c.$1, style: BP.label(wide ? 10.5 : 9.5, color: BP.onInk))),
           const SizedBox(height: 3),
           Text(c.$2, style: BP.d(valueSize, color: c.$2 == '\u2014' ? BP.faint : BP.paper)),
         ],
       ),
     );
-    const rule = SizedBox(width: 2, child: ColoredBox(color: BP.paper));
+    const rule = SizedBox(width: 1, child: ColoredBox(color: BP.line));
     return Semantics(
       label: 'Today ${cells[0].$2 == '\u2014' ? 'not played' : cells[0].$2}, daily best ${cells[1].$2}, endless best ${cells[2].$2}',
       child: ExcludeSemantics(
         child: Container(
           decoration: BoxDecoration(
-            color: BP.cream,
-            border: Border.all(color: BP.paper, width: 3),
+            color: BP.panel,
+            border: Border.all(color: BP.line, width: 1),
             borderRadius: BorderRadius.circular(BP.radius),
-            boxShadow: const [BoxShadow(color: BP.paper, offset: Offset(5, 5))],
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -220,11 +222,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
 
   Widget _dailyTag() {
     final played = game.store.dailyFor(game.clock(), variant: game.dailyVariant) != null;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(color: BP.paper, borderRadius: BorderRadius.circular(4)),
-      child: Text(played ? 'PLAY TODAY\u2019S DAILY AGAIN' : 'START TODAY\u2019S DAILY', style: BP.label(12, color: BP.hazard)),
-    );
+    return Text(played ? 'PLAY TODAY\u2019S DAILY AGAIN' : 'START TODAY\u2019S DAILY', style: BP.label(12, color: BP.paper));
   }
 
   Widget _bigButton(double size) =>
@@ -232,11 +230,42 @@ class _MenuOverlayState extends State<MenuOverlay> {
 
   Widget _endless({required bool wide}) => StarkAction(
     key: const Key('endlessButton'),
-    label: 'ENDLESS MODE',
+    label: 'ENDLESS',
     size: wide ? 14 : 12,
     keyHint: wide ? 'E' : null,
     semantic: 'Play endless mode',
     onTap: () => game.startRun(GameMode.endless),
+  );
+
+  Widget _story({required bool wide}) {
+    final cleared = game.store.storyCleared;
+    return StarkAction(
+      key: const Key('storyButton'),
+      label: 'STORY',
+      size: wide ? 14 : 12,
+      keyHint: wide ? 'S' : null,
+      semantic: cleared == 0 ? 'Story mode' : 'Story mode, $cleared shifts cleared',
+      onTap: () => game.openPanel('story'),
+    );
+  }
+
+  Widget _boards() => StarkAction(
+    key: const Key('boardsButton'),
+    label: 'BOARDS',
+    size: 14,
+    keyHint: 'L',
+    semantic: 'Leaderboards',
+    onTap: () => game.openPanel('leaderboard'),
+  );
+
+  /// The other actions in one row (wraps if it has to).
+  Widget _actions({required bool wide}) => Wrap(
+    alignment: wide ? WrapAlignment.start : WrapAlignment.center,
+    children: [
+      _endless(wide: wide),
+      _story(wide: wide),
+      if (wide && game.leaderboards.enabled) _boards(),
+    ],
   );
 
   // --- Layouts ---------------------------------------------------------------
@@ -264,13 +293,15 @@ class _MenuOverlayState extends State<MenuOverlay> {
                   SizedBox(height: (title * 0.24).clamp(BP.s4, BP.s6)),
                   _ticket(wide: true),
                   SizedBox(height: (title * 0.2).clamp(BP.s4, BP.s5 + 4)),
-                  _endless(wide: true),
+                  _actions(wide: true),
                   const SizedBox(height: BP.s3),
                   Padding(
                     padding: const EdgeInsets.only(left: 6),
                     child: KeyHints([
                       ('SPACE', 'DAILY'),
                       ('E', 'ENDLESS'),
+                      ('S', 'STORY'),
+                      if (game.leaderboards.enabled) ('L', 'BOARDS'),
                       ('M', game.audio.enabled ? 'MUTE' : 'UNMUTE'),
                     ]),
                   ),
@@ -317,11 +348,25 @@ class _MenuOverlayState extends State<MenuOverlay> {
               SizedBox(height: tight ? BP.s3 : BP.s5),
               _ticket(wide: false),
               SizedBox(height: tight ? BP.s2 : BP.s4),
-              _endless(wide: false),
+              _actions(wide: false),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// A dark red bloom at the edges of the screen.
+class _Vignette extends StatelessWidget {
+  const _Vignette();
+
+  @override
+  Widget build(BuildContext context) => const IgnorePointer(
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(radius: 1.05, colors: [Color(0x00000000), Color(0x00000000), Color(0x40500A10)], stops: [0, 0.6, 1]),
+      ),
+    ),
+  );
 }

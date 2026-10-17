@@ -3,38 +3,40 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-/// The one visual identity: a warning label that is losing its temper.
+/// The one visual identity: a control room at 3am, and something is wrong.
 ///
-/// Cream paper, heavy black ink, thick outlines and hard offset shadows,
-/// hazard tape at the edges, and a red flood that rises up the screen as the
-/// clock runs out. Display type is Anton (tall, condensed, shouting); small
-/// text is Manrope ExtraBold.
+/// Near-black panels, bone-white type, one alarm red and one sodium amber.
+/// Flat, square-edged slabs with hairline rules instead of cartoon outlines
+/// and offset shadows. A dark red flood rises as the clock runs out and the
+/// edges of the screen pulse red like a pulse in your ears. Display type is
+/// Anton (tall, condensed, shouting); small text is Manrope.
 ///
-/// Naming note: [ink] is the BACKGROUND (paper) colour and [paper] is the
-/// FOREGROUND (ink) colour. The names are kept from the old dark theme so
-/// every screen flipped over in one place.
+/// Naming note: [ink] is the BACKGROUND colour and [paper] is the FOREGROUND
+/// colour. The names go back to an earlier theme; every screen reads them.
 class BP {
   // Background.
-  static const ink = Color(0xFFF4EEE2);
-  static const line = Color(0xFFD9D0BF);
+  static const ink = Color(0xFF0B0C0E);
+  static const line = Color(0xFF2B2E33); // hairline rules on the background
 
   // Foreground.
-  static const paper = Color(0xFF111111);
-  static const muted = Color(0xFF4B463E);
-  static const faint = Color(0xFF8C8578);
+  static const paper = Color(0xFFECE8E1);
+  static const muted = Color(0xFFA7A197);
+  static const faint = Color(0xFF6F6B64);
 
   // Signals.
-  static const signal = Color(0xFFFF2E3F); // the button, the deadline, failure
-  static const hazard = Color(0xFFFFD000); // tape, the HUD, highlights
-  static const flood = Color(0xFFFFB3BA); // the rising panic
-  static const calm = Color(0xFF2F4D6E); // calm rounds: cold, not cheerful
-  static const calmBg = Color(0xFFDDE6EE);
+  static const signal = Color(0xFFFF2B39); // the button, the deadline, failure
+  static const hazard = Color(0xFFF0A81C); // sodium amber: warnings, the round tag
+  static const flood = Color(0xFF3A0A0F); // the rising panic: dark arterial red
+  static const calm = Color(0xFFA9C4E0); // calm rounds: cold, not cheerful
+  static const calmBg = Color(0xFF0C1520);
 
-  // Supporting tones for the overhauled screens.
-  static const cream = Color(0xFFFFF8EA); // card faces and light type on ink
-  static const blood = Color(0xFFC81E2E); // the deep red under red: shadows, stripes
-  static const inkSoft = Color(0xFF2A2621); // panels inside black bars
-  static const onInk = Color(0xFFB9B0A0); // quiet labels on black
+  // Supporting tones.
+  static const cream = Color(0xFFF6F3EE); // brightest type: big numbers, labels on red
+  static const blood = Color(0xFF8C1018); // the deep red under red: report bars, shadows
+  static const inkSoft = Color(0xFF1C1F23); // raised panels on the background
+  static const panel = Color(0xFF131518); // bars and cards
+  static const onInk = Color(0xFF8E8981); // quiet labels on dark panels
+  static const rim = Color(0xFF020203); // button rims: near black
 
   static const display = 'Anton';
   static const text = 'Manrope';
@@ -75,23 +77,21 @@ class BP {
   static Color shade(Color c, double amount) => Color.lerp(c, const Color(0xFF000000), amount)!;
   static Color tint(Color c, double amount) => Color.lerp(c, const Color(0xFFFFFFFF), amount)!;
 
-  /// Card corners and slab corners.
-  static const radius = 10.0;
+  /// Card corners and slab corners: barely rounded, machined.
+  static const radius = 3.0;
 
-  /// A printed-paper halftone: one tiny tile of dots, repeated by a shader
-  /// so the whole screen costs a single rectangle fill. Built once.
-  static final Map<Color, Paint> _dotPaints = {};
+  /// Faint horizontal scanlines: one tiny tile repeated by a shader, so the
+  /// whole screen costs a single rectangle fill. Built once per colour.
+  static final Map<Color, Paint> _linePaints = {};
   static final _identity = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
-  /// Paint that fills an area with halftone dots of [dot] (alpha included).
-  static Paint dots(Color dot) => _dotPaints.putIfAbsent(dot, () {
-    const s = 22.0;
+  /// Paint that fills an area with 1px lines of [line] every 3px.
+  static Paint scanlines(Color line) => _linePaints.putIfAbsent(line, () {
+    const w = 4, h = 3;
     final rec = ui.PictureRecorder();
     final c = Canvas(rec);
-    final p = Paint()..color = dot;
-    c.drawCircle(const Offset(s * 0.25, s * 0.25), 1.2, p);
-    c.drawCircle(const Offset(s * 0.75, s * 0.75), 1.2, p);
-    final tile = rec.endRecording().toImageSync(s.toInt(), s.toInt());
+    c.drawRect(const Rect.fromLTWH(0, 0, 4, 1), Paint()..color = line);
+    final tile = rec.endRecording().toImageSync(w, h);
     return Paint()..shader = ImageShader(tile, TileMode.repeated, TileMode.repeated, _identity);
   });
 }

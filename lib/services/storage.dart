@@ -83,4 +83,33 @@ class ScoreStore {
 
   bool get hapticsOn => _prefs.getBool(_hapticsOn) ?? true;
   Future<void> setHapticsOn(bool v) => _prefs.setBool(_hapticsOn, v);
+
+  // Story: how far you've got, kept on this device.
+
+  /// Highest Story level cleared (0 = none yet).
+  int get storyCleared => _prefs.getInt('story_cleared') ?? 0;
+
+  /// The highest level you can play: the one after the last you cleared.
+  int storyUnlocked(int levelCount) => (storyCleared + 1).clamp(1, levelCount);
+
+  /// Marks [level] cleared. Returns true the first time.
+  Future<bool> recordStoryClear(int level) async {
+    if (level <= storyCleared) return false;
+    await _prefs.setInt('story_cleared', level);
+    return true;
+  }
+
+  /// Attempts at [level] so far (shown on the level card).
+  int storyAttempts(int level) => _prefs.getInt('story_attempts_$level') ?? 0;
+  Future<void> countStoryAttempt(int level) => _prefs.setInt('story_attempts_$level', storyAttempts(level) + 1);
+
+  // Leaderboards: an anonymous id for this device, and the name you chose.
+
+  /// A random id for this device's leaderboard entries. Never shown.
+  String get playerId => _prefs.getString('lb_player') ?? '';
+  Future<void> setPlayerId(String id) => _prefs.setString('lb_player', id);
+
+  /// The name shown on the boards ('' = not chosen yet).
+  String get playerName => _prefs.getString('lb_name') ?? '';
+  Future<void> setPlayerName(String name) => _prefs.setString('lb_name', name);
 }

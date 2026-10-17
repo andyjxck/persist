@@ -9,8 +9,10 @@ import '../logic/soundtrack.dart';
 import '../logic/difficulty.dart';
 import '../logic/rng.dart';
 import '../logic/run_engine.dart';
+import '../logic/story.dart';
 import '../rounds/round.dart';
 import '../services/feedback.dart';
+import '../services/leaderboard.dart';
 import '../services/storage.dart';
 import '../ui/theme.dart';
 import 'arena_component.dart';
@@ -56,6 +58,9 @@ class RunResult {
     required this.date,
     this.dailyFirst,
     this.practice = false,
+    this.level,
+    this.cleared = false,
+    this.firstClear = false,
   });
 
   final GameMode mode;
@@ -71,8 +76,20 @@ class RunResult {
   /// Practice/demo run from the hidden web options: nothing was saved.
   final bool practice;
 
+  /// Story runs: the level played, whether it was cleared, and whether that
+  /// was the first time.
+  final StoryLevel? level;
+  final bool cleared;
+  final bool firstClear;
+
   String get shareText {
     final rounds = score == 1 ? '1 round' : '$score rounds';
+    final lv = level;
+    if (mode == GameMode.story && lv != null) {
+      return cleared
+          ? 'Button Panic Story: I got through shift ${lv.number}, ${lv.title}.'
+          : 'Button Panic Story: shift ${lv.number}, ${lv.title}, got me after $rounds.';
+    }
     if (mode == GameMode.daily) {
       return 'Button Panic Daily, ${prettyDate(date)}: I survived $rounds. '
           'Same buttons for everyone today. Can you beat me?';
@@ -89,13 +106,18 @@ String prettyDate(DateTime d) {
 /// The Flame game: runs the loop, owns the current round and the chaos
 /// layers, turns finger presses into round events, and shows the overlays.
 class ButtonPanicGame extends FlameGame {
-  ButtonPanicGame({required this.store, DateTime Function()? clock, this.demo = const DemoConfig()})
-    : clock = clock ?? DateTime.now {
+  ButtonPanicGame({required this.store, DateTime Function()? clock, this.demo = const DemoConfig(), Leaderboards? leaderboards})
+    : clock = clock ?? DateTime.now,
+      leaderboards = leaderboards ?? Leaderboards(store: store) {
     audio.enabled = store.soundOn;
     haptics.enabled = store.hapticsOn;
   }
 
   final ScoreStore store;
+
+  /// Daily and Endless rankings (switched off unless the build has a
+  /// leaderboard project).
+  final Leaderboards leaderboards;
   final DateTime Function() clock;
   final DemoConfig demo;
   final GameAudio audio = GameAudio();
@@ -203,6 +225,10 @@ class ButtonPanicGame extends FlameGame {
   // ---------------------------------------------------------------------------
 
   void startRun(GameMode mode) {
+    if (mode == GameMode.story) {
+      startStory(storyLevelToPlay);
+      return;
+    }
     final now = clock();
     _runStarted = now;
     _runVariant = dailyVariant;
@@ -215,6 +241,68 @@ class ButtonPanicGame extends FlameGame {
       e.skipTo(demo.startRound);
       if (demo.forceRetry) e.retryChance = 1;
     }
+    leaderboards.clearPending();
+    if (!(mode == GameMode.endless && demo.isActive)) {
+      final board = Boards.forRun(mode, _runVariant, now);
+      if (board != null) leaderboards.runStarted(board);
+    }
+    _launch(e);
+  }
+
+  /// The result screen's main action: the same mode again; in Story, the
+  /// next shift after a clear, or the same shift after a failure.
+  void again() {
+    final r = lastResult;
+    if (r == null) {
+      startRun(GameMode.endless);
+      return;
+    }
+    final lv = r.level;
+    if (r.mode == GameMode.story && lv != null) {
+      startStory(r.cleared && lv.number < storyLevels.length ? lv.number + 1 : lv.number);
+    } else {
+      startRun(r.mode);
+    }
+  }
+
+  /// The level Story starts on from the menu: the furthest one unlocked.
+  int get storyLevelToPlay => store.storyUnlocked(storyLevels.length);
+
+  /// Plays Story level [number] (1-based). Locked levels can't be started.
+  void startStory(int number) {
+    final unlocked = store.storyUnlocked(storyLevels.length);
+    final level = storyLevel(number.clamp(1, unlocked)) ?? storyLevels.first;
+    _runStarted = clock();
+    _runVariant = dailyVariant;
+    final e = StoryRunEngine(level, platform: layoutPlatform, multiTouch: multiTouch);
+    store.countStoryAttempt(level.number);
+    leaderboards.clearPending();
+    _launch(e);
+  }
+
+  /// The menu's side panel: null, 'story' (level list) or 'leaderboard'.
+  String? panel;
+
+  /// The leaderboard panel's tab: 0 = today's Daily, 1 = all-time Endless.
+  final ValueNotifier<int> boardTab = ValueNotifier(0);
+
+  void openPanel(String name) {
+    if (phase != GamePhase.menu && phase != GamePhase.gameOver) return;
+    overlays.removeAll(['story', 'leaderboard']);
+    panel = name;
+    overlays.add(name);
+    revision.value++;
+  }
+
+  void closePanel() {
+    if (panel == null) return;
+    overlays.remove(panel!);
+    panel = null;
+    revision.value++;
+  }
+
+  void _launch(RunEngine e) {
+    closePanel();
     engine = e;
     _demoCooldown = 0;
     _demoHolding = null;
@@ -231,6 +319,9 @@ class ButtonPanicGame extends FlameGame {
   }
 
   void backToMenu() {
+    if (phase != GamePhase.gameOver && phase != GamePhase.menu) leaderboards.runAbandoned();
+    leaderboards.clearPending();
+    closePanel();
     audio.musicStop();
     _clearBanner();
     phase = GamePhase.menu;
@@ -288,7 +379,9 @@ class ButtonPanicGame extends FlameGame {
     }
 
     final unlocked = e.familiesUnlockingAt(e.roundIndex);
-    if (unlocked.isNotEmpty && e.retries == 0) {
+    if (e is StoryRunEngine && e.roundIndex == 0 && e.retries == 0) {
+      _showBanner('SHIFT ${e.level.number.toString().padLeft(2, '0')}  ·  ${e.level.title}', 'Survive ${e.level.length} rounds', 2.0);
+    } else if (unlocked.isNotEmpty && e.retries == 0) {
       _showBanner('NEW: ${unlocked.map((f) => f.title).join(' + ')}', 'New round types unlocked', 1.6);
     } else if (r.isCalm && e.retries == 0) {
       _showBanner('...', '', 1.0);
@@ -344,8 +437,12 @@ class ButtonPanicGame extends FlameGame {
       case GamePhase.roundWon:
         _phaseTimer -= dt;
         if (_phaseTimer <= 0) {
-          phase = GamePhase.playing;
-          _beginRound();
+          if (engine?.isComplete ?? false) {
+            _finishStoryClear();
+          } else {
+            phase = GamePhase.playing;
+            _beginRound();
+          }
         }
       case GamePhase.failing:
         // Let the failure land (shake, shatter, sound) before the screen.
@@ -651,8 +748,33 @@ class ButtonPanicGame extends FlameGame {
       audio.musicStop();
       phase = GamePhase.gameOver;
       lastResult = _buildResult(r, save: true);
+      if (e.mode != GameMode.story && !isPractice) leaderboards.runEnded(e.score);
       overlays.add('gameOver');
     }
+  }
+
+  /// The last round of a Story level was survived.
+  void _finishStoryClear() {
+    final e = engine as StoryRunEngine;
+    audio.musicStop();
+    audio.playReveal();
+    haptics.success();
+    final first = e.level.number > store.storyCleared;
+    store.recordStoryClear(e.level.number);
+    lastResult = RunResult(
+      mode: GameMode.story,
+      score: e.score,
+      reason: e.level.log,
+      best: e.level.length,
+      isNewBest: false,
+      date: _runStarted ?? clock(),
+      level: e.level,
+      cleared: true,
+      firstClear: first,
+    );
+    round = null;
+    phase = GamePhase.gameOver;
+    overlays.add('gameOver');
   }
 
   /// ...then reveal you're still alive, and the clock is already running.
@@ -681,6 +803,17 @@ class ButtonPanicGame extends FlameGame {
     final e = engine!;
     final now = e.mode == GameMode.daily ? (_runStarted ?? clock()) : clock();
     final score = e.score;
+    if (e is StoryRunEngine) {
+      return RunResult(
+        mode: GameMode.story,
+        score: score,
+        reason: r.failReason,
+        best: e.level.length,
+        isNewBest: false,
+        date: now,
+        level: e.level,
+      );
+    }
     if (isPractice) save = false; // practice and demo runs never count
     if (e.mode == GameMode.daily) {
       final existing = store.dailyFor(now, variant: _runVariant);
