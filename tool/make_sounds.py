@@ -136,3 +136,18 @@ r1 = click(0.06, [(1800, 5, 1.0), (4000, 9, 0.6)], body=(120, 0.4, 0.03), t60=0.
 snap[: len(r1)] += r1
 snap[n_of(0.09): n_of(0.09) + len(tick_t)] += 0.7 * tick_t[: n - n_of(0.09)]
 save("reveal.wav", finish(snap, 0.9))
+
+# --- Glitch (the lights cut out, buttons jump): a burst of crackling static ---
+n = n_of(0.12)
+t = t_axis(n)
+noise = rng.standard_normal(n)
+gate = (np.sin(2 * np.pi * 55 * t) > 0.2).astype(float)  # stuttering on/off
+crackle = resonator(noise, 2600, 1.2) * gate + 0.3 * resonator(noise, 700, 1.5)
+save("glitch.wav", finish(crackle * decay(n, 0.11), 0.7))
+
+# --- Buzz (HURRY): a short, ugly two-tone square buzzer --------------------------
+n = n_of(0.2)
+t = t_axis(n)
+sq = np.sign(np.sin(2 * np.pi * 180 * t)) * 0.6 + np.sign(np.sin(2 * np.pi * 247 * t)) * 0.4
+env = np.minimum(1, t / 0.004) * np.minimum(1, (0.2 - t) / 0.03)
+save("buzz.wav", finish(resonator(sq, 900, 0.8) * env + 0.25 * sq * env, 0.55))

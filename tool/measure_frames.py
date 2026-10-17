@@ -18,6 +18,10 @@ url = sys.argv[1]
 w = int(sys.argv[2]) if len(sys.argv) > 2 else 1440
 h = int(sys.argv[3]) if len(sys.argv) > 3 else 900
 secs = float(sys.argv[4]) if len(sys.argv) > 4 else 12
+# Optional: device pixel ratio and CPU slowdown (4 = roughly a mid-range
+# phone), to see the build the way a phone does.
+dpr = float(sys.argv[5]) if len(sys.argv) > 5 else 1
+throttle = float(sys.argv[6]) if len(sys.argv) > 6 else 1
 
 JS = """(secs) => new Promise(res => {
   const d = []; let last = performance.now(); const end = last + secs * 1000;
@@ -27,10 +31,13 @@ JS = """(secs) => new Promise(res => {
 
 with sync_playwright() as p:
     b = p.chromium.launch(args=["--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required"])
-    pg = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=1)
+    phone = dpr > 1
+    pg = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=dpr, is_mobile=phone, has_touch=phone)
     pg.goto(url, wait_until="load")
     pg.wait_for_timeout(9000)  # engine + fonts + demo start
     cdp = pg.context.new_cdp_session(pg)
+    if throttle > 1:
+        cdp.send("Emulation.setCPUThrottlingRate", {"rate": throttle})
     cdp.send("Performance.enable")
     m0 = {m["name"]: m["value"] for m in cdp.send("Performance.getMetrics")["metrics"]}
     d = pg.evaluate(JS, secs)

@@ -1,57 +1,67 @@
 import 'package:flutter/painting.dart';
 
-/// The one visual identity, used by the game canvas and every screen.
+/// The one visual identity: a warning label that is losing its temper.
 ///
-/// Near-black void, one cold off-white for words, greys for everything
-/// quieter, and the button's own colours as the only colour on screen.
-/// Type: Manrope (bundled, SIL OFL), set small, spaced and sparse.
+/// Cream paper, heavy black ink, thick outlines and hard offset shadows,
+/// hazard tape at the edges, and a red flood that rises up the screen as the
+/// clock runs out. Display type is Anton (tall, condensed, shouting); small
+/// text is Manrope ExtraBold.
+///
+/// Naming note: [ink] is the BACKGROUND (paper) colour and [paper] is the
+/// FOREGROUND (ink) colour. The names are kept from the old dark theme so
+/// every screen flipped over in one place.
 class BP {
-  // The void.
-  static const ink = Color(0xFF050505);
-  static const line = Color(0xFF1E1E1E);
+  // Background.
+  static const ink = Color(0xFFF4EEE2);
+  static const line = Color(0xFFD9D0BF);
 
-  // Words.
-  static const paper = Color(0xFFE4E4E2);
-  static const muted = Color(0xFF8C8C8A);
-  static const faint = Color(0xFF4E4E4C);
+  // Foreground.
+  static const paper = Color(0xFF111111);
+  static const muted = Color(0xFF4B463E);
+  static const faint = Color(0xFF8C8578);
 
   // Signals.
-  static const signal = Color(0xFFFF3B4E); // the button, the deadline, failure
-  static const calm = Color(0xFF8193A8); // calm rounds: cold, not cheerful
-  static const calmBg = Color(0xFF05070A);
+  static const signal = Color(0xFFFF2E3F); // the button, the deadline, failure
+  static const hazard = Color(0xFFFFD000); // tape, the HUD, highlights
+  static const flood = Color(0xFFFFB3BA); // the rising panic
+  static const calm = Color(0xFF2F4D6E); // calm rounds: cold, not cheerful
+  static const calmBg = Color(0xFFDDE6EE);
 
-  static const display = 'Manrope';
+  static const display = 'Anton';
   static const text = 'Manrope';
 
   static const tabular = [FontFeature.tabularFigures()];
 
-  static TextStyle d(double size, {Color color = paper, FontWeight weight = FontWeight.w700, double height = 1.05, double spacing = 0}) =>
+  static TextStyle d(double size, {Color color = paper, FontWeight weight = FontWeight.w400, double height = 1.0, double spacing = 0}) =>
       TextStyle(
         fontFamily: display,
         fontSize: size,
         color: color,
-        fontWeight: weight,
+        fontWeight: FontWeight.w400,
         height: height,
         letterSpacing: spacing,
         fontFeatures: tabular,
       );
 
-  static TextStyle t(double size, {Color color = paper, FontWeight weight = FontWeight.w500, double height = 1.45, double spacing = 0}) =>
+  static TextStyle t(double size, {Color color = paper, FontWeight weight = FontWeight.w700, double height = 1.4, double spacing = 0}) =>
       TextStyle(fontFamily: text, fontSize: size, color: color, fontWeight: weight, height: height, letterSpacing: spacing);
 
-  /// Small, widely spaced capitals: the only kind of label there is.
+  /// Labels: chunky capitals, lightly spaced.
   static TextStyle label(double size, {Color color = muted}) => TextStyle(
     fontFamily: text,
     fontSize: size,
     color: color,
-    fontWeight: FontWeight.w700,
-    letterSpacing: size * 0.32,
+    fontWeight: FontWeight.w800,
+    letterSpacing: size * 0.08,
     height: 1.2,
     fontFeatures: tabular,
   );
 
   /// Spacing scale.
   static const s1 = 4.0, s2 = 8.0, s3 = 12.0, s4 = 16.0, s5 = 24.0, s6 = 32.0, s7 = 48.0, s8 = 64.0;
+
+  /// Outline width for buttons and cards, scaled to their size.
+  static double outline(double r) => (r * 0.07).clamp(2.5, 6.0);
 
   static Color shade(Color c, double amount) => Color.lerp(c, const Color(0xFF000000), amount)!;
   static Color tint(Color c, double amount) => Color.lerp(c, const Color(0xFFFFFFFF), amount)!;

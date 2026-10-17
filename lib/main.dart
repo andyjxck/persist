@@ -104,9 +104,10 @@ class _PhoneShellState extends State<_PhoneShell> {
                   top: 0,
                   right: 4,
                   child: StarkAction(
+                    look: ActionLook.chip,
                     label: game.audio.enabled ? 'SOUND' : 'MUTED',
-                    size: 9,
-                    color: BP.faint,
+                    size: 10,
+                    color: BP.hazard,
                     semantic: 'Sound',
                     onTap: () => setState(() => game.setSound(!game.audio.enabled)),
                   ),

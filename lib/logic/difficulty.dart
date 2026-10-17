@@ -5,10 +5,10 @@ import 'rng.dart';
 /// All the tuning numbers in one place.
 class Difficulty {
   /// Each round's timer is this much of the previous one...
-  static const double timerDecay = 0.972;
+  static const double timerDecay = 0.965;
 
   /// ...but never below this fraction of the starting time.
-  static const double timerFloor = 0.45;
+  static const double timerFloor = 0.4;
 
   /// After a surprise TRY AGAIN, the retried round gets this much of the time.
   static const double retryTimerMultiplier = 0.6;
@@ -35,6 +35,8 @@ class ChaosState {
     this.swap = false,
     this.tempo = 1,
     this.calm = false,
+    this.drift = 0,
+    this.blackouts = 0,
   });
 
   /// Screen shake strength, 0..1.
@@ -55,6 +57,12 @@ class ChaosState {
   /// A suspiciously calm round: everything above is switched off.
   final bool calm;
 
+  /// Buttons wander around their spot while you aim, 0..1 (how far).
+  final double drift;
+
+  /// How many times the lights cut out for a split second mid-round.
+  final int blackouts;
+
   static const none = ChaosState();
 
   List<String> get activeLayers => [
@@ -62,6 +70,8 @@ class ChaosState {
     if (invert) 'invert',
     if (rotationSpeed != 0) 'rotate',
     if (swap) 'swap',
+    if (drift > 0) 'drift',
+    if (blackouts > 0) 'blackout',
     if (calm) 'calm',
   ];
 
@@ -74,18 +84,28 @@ class ChaosState {
     final n = roundIndex;
     final double tempo = 1 + math.min(0.9, n * 0.025);
 
+    // Chaos starts early and piles up: by round 12 most rounds stack two or
+    // three layers, and from round 16 the screen never stops shaking.
     var shake = 0.0;
-    if (n >= 5 && (n >= 16 || rng.chance(0.5))) {
-      shake = math.min(1.0, (n - 4) / 22);
+    if (n >= 3 && (n >= 12 || rng.chance(0.55))) {
+      shake = math.min(1.0, (n - 2) / 16);
     }
-    final swap = n >= 7 && rng.chance(0.35);
-    final invert = n >= 10 && rng.chance(math.min(0.45, 0.2 + (n - 10) * 0.01));
+    final swap = n >= 5 && rng.chance(math.min(0.6, 0.35 + (n - 5) * 0.015));
+    var drift = 0.0;
+    if (n >= 6 && rng.chance(math.min(0.6, 0.3 + (n - 6) * 0.015))) {
+      drift = math.min(1.0, 0.45 + (n - 6) * 0.03);
+    }
+    final invert = n >= 8 && rng.chance(math.min(0.45, 0.2 + (n - 8) * 0.012));
+    var blackouts = 0;
+    if (n >= 9 && rng.chance(math.min(0.5, 0.25 + (n - 9) * 0.015))) {
+      blackouts = n >= 18 && rng.chance(0.5) ? 2 : 1;
+    }
     var rotation = 0.0;
-    if (n >= 14 && rng.chance(math.min(0.5, 0.25 + (n - 14) * 0.01))) {
-      final speed = rng.rangeDouble(0.12, 0.2 + math.min(0.3, (n - 14) * 0.01));
+    if (n >= 12 && rng.chance(math.min(0.5, 0.25 + (n - 12) * 0.01))) {
+      final speed = rng.rangeDouble(0.12, 0.2 + math.min(0.3, (n - 12) * 0.01));
       rotation = rng.chance(0.5) ? speed : -speed;
     }
-    return ChaosState(shake: shake, invert: invert, rotationSpeed: rotation, swap: swap, tempo: tempo);
+    return ChaosState(shake: shake, invert: invert, rotationSpeed: rotation, swap: swap, tempo: tempo, drift: drift, blackouts: blackouts);
   }
 
   static bool _rawCalm(int seed, int roundIndex) {

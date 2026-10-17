@@ -68,7 +68,7 @@ class _GameOverOverlayState extends State<GameOverOverlay> with SingleTickerProv
     return FadeTransition(
       opacity: CurvedAnimation(parent: _in, curve: const Interval(0.3, 1)),
       child: ColoredBox(
-        color: BP.ink,
+        color: BP.signal,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -78,34 +78,53 @@ class _GameOverOverlayState extends State<GameOverOverlay> with SingleTickerProv
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(result.reason.toUpperCase(), textAlign: TextAlign.center, style: BP.label(wide ? 12 : 11, color: BP.signal)),
-                    const SizedBox(height: BP.s7),
-                    Text('${result.score}', textAlign: TextAlign.center, style: BP.d(wide ? 132 : 112, weight: FontWeight.w500, height: 0.9, spacing: -4)),
-                    const SizedBox(height: BP.s4),
-                    Text(result.score == 1 ? 'ROUND' : 'ROUNDS', textAlign: TextAlign.center, style: BP.label(11, color: BP.faint)),
+                    Transform.rotate(
+                      angle: -0.04,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        color: BP.paper,
+                        child: Text(result.reason.toUpperCase(), textAlign: TextAlign.center, style: BP.d(wide ? 30 : 24, color: BP.hazard, spacing: 1)),
+                      ),
+                    ),
+                    const SizedBox(height: BP.s5),
+                    Stack(
+                      children: [
+                        Transform.translate(
+                          offset: const Offset(8, 8),
+                          child: Text('${result.score}', textAlign: TextAlign.center, style: BP.d(wide ? 200 : 168, height: 0.95)),
+                        ),
+                        Text('${result.score}', textAlign: TextAlign.center, style: BP.d(wide ? 200 : 168, color: const Color(0xFFFFFFFF), height: 0.95)),
+                      ],
+                    ),
+                    Text(result.score == 1 ? 'ROUND SURVIVED' : 'ROUNDS SURVIVED', textAlign: TextAlign.center, style: BP.d(wide ? 30 : 26)),
                     const SizedBox(height: BP.s3),
-                    Text(status, textAlign: TextAlign.center, style: BP.label(10, color: result.isNewBest ? BP.paper : BP.faint)),
-                    const SizedBox(height: BP.s8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      color: result.isNewBest ? BP.hazard : const Color(0x00000000),
+                      child: Text(status, textAlign: TextAlign.center, style: BP.label(13, color: BP.paper)),
+                    ),
+                    const SizedBox(height: BP.s6),
                     Wrap(
                       alignment: WrapAlignment.center,
-                      spacing: BP.s4,
+                      spacing: BP.s2,
+                      runSpacing: BP.s2,
                       children: [
                         StarkAction(
                           key: const Key('againButton'),
-                          label: wide ? 'AGAIN  (SPACE)' : 'AGAIN',
-                          size: 13,
-                          color: BP.paper,
+                          look: ActionLook.secondary,
+                          label: wide ? 'AGAIN (SPACE)' : 'AGAIN',
+                          size: 15,
                           onTap: () => _live ? game.startRun(result.mode) : null,
                         ),
                         StarkAction(
                           key: const Key('shareButton'),
                           label: _copied ? 'COPIED' : (kIsWeb ? 'COPY' : 'SHARE'),
-                          size: 13,
+                          size: 15,
                           onTap: () => _live ? _share(result) : null,
                         ),
                         StarkAction(
-                          label: wide ? 'MENU  (ESC)' : 'MENU',
-                          size: 13,
+                          label: wide ? 'MENU (ESC)' : 'MENU',
+                          size: 15,
                           onTap: () => _live ? game.backToMenu() : null,
                         ),
                       ],

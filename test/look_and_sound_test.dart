@@ -18,11 +18,13 @@ double _distance(Color a, Color b) {
 }
 
 void main() {
-  group('Colour rounds stay readable on the void', () {
-    test('every button colour stands out from the near-black background', () {
+  group('Colour rounds stay readable on paper', () {
+    test('every button is outlined in ink that stands out from every background, and every colour stands out from its outline', () {
+      for (final bg in [BP.ink, BP.calmBg, BP.flood]) {
+        expect(_contrast(BP.paper, bg), greaterThan(7), reason: '$bg');
+      }
       for (final c in GameColour.all) {
-        expect(_contrast(c.color, BP.ink), greaterThan(4.5), reason: c.name);
-        expect(_contrast(c.color, BP.calmBg), greaterThan(4.5), reason: c.name);
+        expect(_contrast(c.color, BP.paper), greaterThan(3), reason: c.name);
       }
     });
 

@@ -62,6 +62,9 @@ flutter:
 
   # Type, bundled locally (SIL Open Font License, see assets/fonts).
   fonts:
+    - family: Anton
+      fonts:
+        - asset: assets/fonts/Anton-Regular.ttf
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope-Medium.ttf

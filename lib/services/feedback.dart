@@ -2,6 +2,8 @@ import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'web_sound.dart';
+
 /// Sound effects. Every file in assets/audio is synthesised by
 /// tool/make_sounds.py for this game (no samples, no licences): a dry clock
 /// escapement, a press click, a latch and a thud. There is no music: the
@@ -21,8 +23,10 @@ class GameAudio {
   static const clear = 'clear.wav';
   static const fail = 'fail.wav';
   static const reveal = 'reveal.wav';
+  static const glitch = 'glitch.wav';
+  static const buzz = 'buzz.wav';
 
-  static const files = [tick, tock, tickTight, tockTight, press, clear, fail, reveal];
+  static const files = [tick, tock, tickTight, tockTight, press, clear, fail, reveal, glitch, buzz];
 
   /// Players kept ready per sound: enough for the fastest overlap.
   static int poolSize(String file) => switch (file) {
@@ -33,6 +37,11 @@ class GameAudio {
 
   Future<void> preload() async {
     if (_loaded) return;
+    // The web plays through Web Audio in index.html (see web_sound.dart).
+    if (kIsWeb) {
+      _loaded = true;
+      return;
+    }
     try {
       await FlameAudio.audioCache.loadAll(files);
       for (final f in files) {
@@ -46,6 +55,10 @@ class GameAudio {
 
   Future<void> _play(String file, double volume) async {
     if (!enabled) return;
+    if (kIsWeb) {
+      webSoundPlay(file, volume);
+      return;
+    }
     final pool = _pools[file];
     if (pool == null) return; // not loaded (yet): stay silent rather than stall
     try {
@@ -59,6 +72,12 @@ class GameAudio {
   void playClear() => _play(clear, 0.6);
   void playFail() => _play(fail, 1.0);
   void playReveal() => _play(reveal, 0.9);
+
+  /// Static: the lights cut out, or buttons jump places.
+  void playGlitch() => _play(glitch, 0.7);
+
+  /// The HURRY buzzer.
+  void playBuzz() => _play(buzz, 0.55);
 
   /// One beat of the clock. [tock] alternates the two halves of the
   /// escapement; [tight] switches to the shorter, harder pair near the end.

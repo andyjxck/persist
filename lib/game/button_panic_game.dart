@@ -163,6 +163,18 @@ class ButtonPanicGame extends FlameGame {
   double _swapProgress = -1;
   (double, double, double, double)? _swapFrom;
 
+  // Drift: buttons wander around their spot (home x, y, phase per button).
+  List<(double, double, double)>? _driftHome;
+
+  // Blackouts: moments (seconds into the round) when the lights cut out.
+  List<double> _blackoutAt = const [];
+
+  /// Seconds of blackout left (the arena draws a dead screen while > 0).
+  double blackout = 0;
+
+  /// Whether this round has already shouted HURRY.
+  bool _hurried = false;
+
   final Map<int, String?> _pointerTargets = {};
   final Map<int, Offset> _pointerStart = {};
 
@@ -244,6 +256,24 @@ class ButtonPanicGame extends FlameGame {
       final b = (a + rng.range(1, r.buttons.length - 1)) % r.buttons.length;
       _swapPair = (a, b);
       _swapAt = r.timeLimit * rng.rangeDouble(0.3, 0.5);
+    }
+
+    // Plan drift (never on the same round as a swap: one moves, the other
+    // jumps) and blackouts. Both deterministic per round.
+    _driftHome = null;
+    if (chaos.drift > 0 && r.allowSwap && _swapAt == null && !reduceMotion) {
+      final rng = SeededRng.derive(e.seed, [e.roundIndex, 'drift']);
+      _driftHome = [for (final b in r.buttons) (b.x, b.y, rng.rangeDouble(0, math.pi * 2))];
+    }
+    blackout = 0;
+    _hurried = false;
+    _blackoutAt = const [];
+    if (chaos.blackouts > 0 && r.showTimer && r.timeLimit > 0) {
+      final rng = SeededRng.derive(e.seed, [e.roundIndex, 'blackout']);
+      _blackoutAt = [
+        r.timeLimit * rng.rangeDouble(0.22, 0.4),
+        if (chaos.blackouts > 1) r.timeLimit * rng.rangeDouble(0.55, 0.7),
+      ];
     }
 
     final unlocked = e.familiesUnlockingAt(e.roundIndex);
@@ -461,12 +491,16 @@ class ButtonPanicGame extends FlameGame {
       _demoHolding = null;
     }
     _updateSwap(r, dt);
+    _updateDrift(r);
+    _updateBlackout(r, dt);
+    _updateHurry(r);
     _updateTicks(r, dt);
 
     // Chaos layers.
     rotation += chaos.rotationSpeed * dt;
 
     if (r.verdict == Verdict.success) {
+      blackout = 0;
       engine!.completeRound(r);
       audio.playClear();
       haptics.success();
@@ -488,6 +522,7 @@ class ButtonPanicGame extends FlameGame {
       final b = buttons[pair.$2];
       _swapFrom = (a.x, a.y, b.x, b.y);
       _swapProgress = 0;
+      audio.playGlitch();
       haptics.chaos();
     }
     if (_swapProgress >= 0 && _swapProgress < 1) {
@@ -503,7 +538,51 @@ class ButtonPanicGame extends FlameGame {
     }
   }
 
+  /// Buttons wander on two slow, out-of-step waves, so you have to chase
+  /// them. They stop the moment the round is decided.
+  void _updateDrift(Round r) {
+    final home = _driftHome;
+    if (home == null || r.verdict != Verdict.pending || home.length != r.buttons.length) return;
+    final t = r.elapsed;
+    final amp = 0.07 * chaos.drift;
+    final ramp = (t / 0.4).clamp(0.0, 1.0); // ease in, no jump on appear
+    for (var i = 0; i < r.buttons.length; i++) {
+      final b = r.buttons[i];
+      final (hx, hy, ph) = home[i];
+      final ry = b.radius;
+      final rx = b.radius / math.max(0.2, r.ctx.aspect);
+      b
+        ..x = (hx + math.sin(t * 2.1 + ph) * amp * ramp).clamp(rx, 1 - rx)
+        ..y = (hy + math.sin(t * 1.7 + ph * 1.3) * amp * ramp).clamp(ry, 1 - ry);
+    }
+  }
+
+  /// The lights cut out for a fraction of a second. Presses still count.
+  void _updateBlackout(Round r, double dt) {
+    if (blackout > 0) blackout = math.max(0, blackout - dt);
+    if (_blackoutAt.isEmpty || r.verdict != Verdict.pending) return;
+    if (r.elapsed >= _blackoutAt.first) {
+      _blackoutAt = _blackoutAt.sublist(1);
+      blackout = 0.22;
+      audio.playGlitch();
+      haptics.chaos();
+    }
+  }
+
+  /// Once per round, from round 4, the strip shouts when time is nearly up.
+  void _updateHurry(Round r) {
+    if (_hurried || r.isCalm || !r.showTimer || r.timeLimit <= 0 || r.verdict != Verdict.pending) return;
+    if (r.ctx.roundIndex < 3 || banner.isNotEmpty && bannerTime > 0) return;
+    if (r.timeLeft / r.timeLimit < 0.3) {
+      _hurried = true;
+      const words = ['HURRY', 'NOW', 'PRESS IT', 'TOO SLOW', 'GO GO GO'];
+      _showBanner(words[(r.ctx.roundIndex * 7 + engine!.seed) % words.length], '', 0.7, alarm: true);
+      audio.playBuzz();
+    }
+  }
+
   void _handleLoss(Round r) {
+    blackout = 0;
     audio.playFail();
     haptics.fail();
     trauma = 1;
