@@ -30,8 +30,88 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>Button Panic</title>
-  <meta name="theme-color" content="#050505">
-  <style>html,body{margin:0;background:#050505;}</style>
+  <meta name="theme-color" content="#111111">
+  <style>html,body{margin:0;background:#F4EEE2;}</style>
+  <script>
+    // Old builds were cached by a service worker, so people kept seeing the
+    // previous version. Remove any old worker and its caches.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () {});
+    }
+    if (window.caches) { caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); }).catch(function () {}); }
+
+    // Phones: draw at no more than 2x. A 3x phone screen has 2.25 times the
+    // pixels of 2x for a difference you can't see in a fast game, and filling
+    // them every frame was the main cause of lag on phones.
+    (function () {
+      try {
+        var real = window.devicePixelRatio || 1;
+        var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        if (touch && real > 2) {
+          Object.defineProperty(window, 'devicePixelRatio', { get: function () { return 2; }, configurable: true });
+        }
+      } catch (e) {}
+    })();
+
+    // Sound: one Web Audio context, unlocked inside the first touch, click
+    // or key press (mobile browsers refuse to play before that), with every
+    // sound decoded up front so a press plays instantly.
+    window.bpSound = (function () {
+      var ctx = null, bufs = {}, loading = false;
+      var names = ['tick', 'tock', 'tick_tight', 'tock_tight', 'press', 'clear', 'fail', 'reveal', 'glitch', 'buzz'];
+      // iPhone: play even when the ring/silent switch is on silent.
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+      function ensure() {
+        if (!ctx) {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { ctx = new AC(); }
+        }
+        return ctx;
+      }
+      function load() {
+        if (loading || !ensure()) return;
+        loading = true;
+        names.forEach(function (n) {
+          fetch('assets/assets/audio/' + n + '.wav')
+            .then(function (r) { return r.arrayBuffer(); })
+            .then(function (b) { return new Promise(function (ok, no) { ctx.decodeAudioData(b, ok, no); }); })
+            .then(function (buf) { bufs[n] = buf; })
+            .catch(function () {});
+        });
+      }
+      function unlock() {
+        var c = ensure();
+        if (!c) return;
+        if (c.state !== 'running') { try { c.resume(); } catch (e) {} }
+        try {
+          var s = c.createBufferSource();
+          s.buffer = c.createBuffer(1, 1, 22050);
+          s.connect(c.destination);
+          s.start(0);
+        } catch (e) {}
+        load();
+      }
+      ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(function (e) {
+        document.addEventListener(e, unlock, { capture: true, passive: true });
+      });
+      return {
+        play: function (n, v) {
+          if (!ctx) return;
+          if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
+          var b = bufs[n];
+          if (!b) return;
+          var s = ctx.createBufferSource();
+          s.buffer = b;
+          var g = ctx.createGain();
+          g.gain.value = v;
+          s.connect(g);
+          g.connect(ctx.destination);
+          s.start(0);
+        }
+      };
+    })();
+  </script>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
