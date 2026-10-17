@@ -34,7 +34,13 @@ with sync_playwright() as p:
     phone = dpr > 1
     pg = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=dpr, is_mobile=phone, has_touch=phone)
     pg.goto(url, wait_until="load")
-    pg.wait_for_timeout(9000)  # engine + fonts + demo start
+    pg.wait_for_timeout(500)
+    # One tap to unlock audio, so the soundtrack's cost is measured too.
+    if phone:
+        pg.touchscreen.tap(w / 2, 140)
+    else:
+        pg.mouse.click(10, 10)
+    pg.wait_for_timeout(8500)  # engine + fonts + demo start
     cdp = pg.context.new_cdp_session(pg)
     if throttle > 1:
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": throttle})

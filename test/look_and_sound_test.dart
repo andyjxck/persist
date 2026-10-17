@@ -39,7 +39,7 @@ void main() {
   });
 
   group('Sound set', () {
-    test('every sound the game plays exists, is small, and there is no music loop', () {
+    test('every sound the game plays exists and is small, and the soundtrack is synthesised live (no music file to download)', () {
       var total = 0;
       for (final f in GameAudio.files) {
         final file = File('assets/audio/$f');

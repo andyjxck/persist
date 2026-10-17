@@ -5,6 +5,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart';
 
 import '../logic/clock_beat.dart';
+import '../logic/soundtrack.dart';
 import '../logic/difficulty.dart';
 import '../logic/rng.dart';
 import '../logic/run_engine.dart';
@@ -218,9 +219,13 @@ class ButtonPanicGame extends FlameGame {
     phase = GamePhase.playing;
     _clearBanner();
     _beginRound();
+    // One soundtrack for the whole run: started here and nowhere else.
+    audio.musicStart();
+    _sendMix();
   }
 
   void backToMenu() {
+    audio.musicStop();
     _clearBanner();
     phase = GamePhase.menu;
     round = null;
@@ -235,8 +240,8 @@ class ButtonPanicGame extends FlameGame {
     round = r;
     _lastPressedId = null;
     _clearBanner(); // an announcement never outlives its round
-    _tickTimer = 0; // the clock starts the moment the round appears
-    _tock = false;
+    // The clock and the soundtrack carry straight on into the new round:
+    // nothing about the sound is reset here.
     _pointerStart.clear();
     for (final b in r.buttons) {
       b.pressed = false;
@@ -325,6 +330,8 @@ class ButtonPanicGame extends FlameGame {
     _updateShake();
     _updateHover();
 
+    if (phase == GamePhase.playing || phase == GamePhase.roundWon) _sendMix();
+
     switch (phase) {
       case GamePhase.playing:
         _updatePlaying(dt);
@@ -394,10 +401,37 @@ class ButtonPanicGame extends FlameGame {
     if (overButton.value != over) overButton.value = over;
   }
 
-  /// The clock: tick, tock, tick, tock from the moment the round appears,
-  /// closing up as the time drains and as the run goes on.
+  /// Tells the soundtrack where the run is: the round sets its tempo, layers
+  /// and key; the time left sets how much it panics. Between rounds the
+  /// panic eases off, but the music itself never stops or restarts.
+  void _sendMix() {
+    final r = round;
+    final e = engine;
+    if (r == null || e == null) return;
+    final timed = r.showTimer && r.timeLimit > 0;
+    final pending = phase == GamePhase.playing && r.verdict == Verdict.pending;
+    final f = timed ? (r.timeLeft / r.timeLimit).clamp(0.0, 1.0) : 1.0;
+    audio.musicSet(SoundtrackMix.at(
+      roundIndex: r.ctx.roundIndex,
+      timeFraction: pending ? f : 1.0,
+      timed: timed,
+      calm: r.isCalm,
+    ));
+  }
+
+  /// The beat. On the web the soundtrack is the beat and the arena pulses
+  /// with it. Elsewhere it's the clock: tick, tock, tick, tock, closing up
+  /// as the time drains and as the run goes on, never restarted by a round.
   void _updateTicks(Round r, double dt) {
     beatAge += dt;
+    if (audio.hasMusic) {
+      final age = audio.musicBeatAge();
+      if (age >= 0) {
+        beatAge = age;
+        beatTight = Soundtrack.tightBeat(audio.lastMix?.urgency ?? 0);
+      }
+      return;
+    }
     if (r.verdict != Verdict.pending) return;
     final timed = r.showTimer && r.timeLimit > 0;
     final f = timed ? (r.timeLeft / r.timeLimit).clamp(0.0, 1.0) : 1.0;
@@ -583,6 +617,7 @@ class ButtonPanicGame extends FlameGame {
 
   void _handleLoss(Round r) {
     blackout = 0;
+    audio.musicDuck(true); // the music drops out under the fail
     audio.playFail();
     haptics.fail();
     trauma = 1;
@@ -607,6 +642,7 @@ class ButtonPanicGame extends FlameGame {
       _phaseTimer = Difficulty.fakeGameOverSeconds;
       overlays.add('gameOver');
     } else {
+      audio.musicStop();
       phase = GamePhase.gameOver;
       lastResult = _buildResult(r, save: true);
       overlays.add('gameOver');
@@ -616,6 +652,7 @@ class ButtonPanicGame extends FlameGame {
   /// ...then reveal you're still alive, and the clock is already running.
   void _revealTryAgain() {
     overlays.remove('gameOver');
+    audio.musicDuck(false); // same soundtrack, straight back in where it was
     audio.playReveal();
     haptics.chaos();
     flashInvert = 0.12;

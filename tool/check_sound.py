@@ -6,7 +6,9 @@ Usage: python3 tool/check_sound.py URL
 Opens URL as a touch phone with the strict autoplay policy, checks that
 nothing plays before the first touch, taps the screen once, then counts every
 Web Audio buffer that starts playing (and which sound it was) while the game
-plays itself (use ?demo in URL).
+plays itself (use ?demo in URL). The soundtrack's noise hits (hats, claps,
+the riser) all play from one shared 1-second noise buffer, so they show up
+under 1000 ms in by_length_ms.
 """
 import json
 import sys
