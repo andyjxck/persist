@@ -127,7 +127,35 @@ class ButtonPanicGame extends FlameGame {
   GamePhase get phase => _phase;
   set phase(GamePhase p) {
     _phase = p;
+    syncOverlays();
     revision.value++;
+  }
+
+  /// The Flutter screens over the canvas, worked out from the phase and the
+  /// open side panel. Nothing else decides them: the GameWidget used to
+  /// re-add 'menu' (its initialActiveOverlays) every time the page rebuilt,
+  /// so pressing M or resizing mid-round put the menu over the round.
+  List<String> get wantedOverlays => switch (phase) {
+    GamePhase.menu => ['menu', ?panel],
+    GamePhase.gameOver => ['gameOver', ?panel],
+    GamePhase.fakeGameOver => ['gameOver'],
+    GamePhase.playing || GamePhase.roundWon || GamePhase.failing => const [],
+  };
+
+  static const _panelOverlays = {'story', 'leaderboard'};
+
+  /// Makes the active overlays exactly [wantedOverlays]. Safe to call on
+  /// every build: it does nothing when they already match. Overlays the
+  /// stage hasn't registered yet (tests without a GameWidget) are skipped.
+  void syncOverlays() {
+    final registered = overlays.registeredOverlays.toSet();
+    final want = wantedOverlays.where(registered.contains).toList();
+    final extra = overlays.activeOverlays.where((o) => !want.contains(o)).toList();
+    if (extra.isNotEmpty) overlays.removeAll(extra);
+    for (final o in want) {
+      // Panels sit above the menu or the result screen.
+      overlays.add(o, priority: _panelOverlays.contains(o) ? 1 : 0);
+    }
   }
 
   /// Bumps whenever the phase changes, so page widgets (scores, stage menu)
@@ -288,16 +316,15 @@ class ButtonPanicGame extends FlameGame {
 
   void openPanel(String name) {
     if (phase != GamePhase.menu && phase != GamePhase.gameOver) return;
-    overlays.removeAll(['story', 'leaderboard']);
     panel = name;
-    overlays.add(name);
+    syncOverlays();
     revision.value++;
   }
 
   void closePanel() {
     if (panel == null) return;
-    overlays.remove(panel!);
     panel = null;
+    syncOverlays();
     revision.value++;
   }
 
@@ -309,7 +336,6 @@ class ButtonPanicGame extends FlameGame {
     trauma = 0;
     arena.fx.clear();
     store.countRun();
-    overlays.removeAll(['menu', 'gameOver']);
     phase = GamePhase.playing;
     _clearBanner();
     _beginRound();
@@ -326,8 +352,6 @@ class ButtonPanicGame extends FlameGame {
     _clearBanner();
     phase = GamePhase.menu;
     round = null;
-    overlays.removeAll(['gameOver']);
-    overlays.add('menu');
   }
 
   void _beginRound() {
@@ -380,7 +404,11 @@ class ButtonPanicGame extends FlameGame {
 
     final unlocked = e.familiesUnlockingAt(e.roundIndex);
     if (e is StoryRunEngine && e.roundIndex == 0 && e.retries == 0) {
-      _showBanner('SHIFT ${e.level.number.toString().padLeft(2, '0')}  ·  ${e.level.title}', 'Survive ${e.level.length} rounds', 2.0);
+      _showBanner(
+        'SHIFT ${e.level.number.toString().padLeft(2, '0')}  ·  ${e.level.title}',
+        'Survive ${e.level.length} rounds',
+        2.0,
+      );
     } else if (unlocked.isNotEmpty && e.retries == 0) {
       _showBanner('NEW: ${unlocked.map((f) => f.title).join(' + ')}', 'New round types unlocked', 1.6);
     } else if (r.isCalm && e.retries == 0) {
@@ -474,7 +502,12 @@ class ButtonPanicGame extends FlameGame {
     if (phase == GamePhase.playing && chaos.shake > 0) amp += chaos.shake * chaosShakePx;
     // A small tremor in the last moments of a timed round.
     final r = round;
-    if (phase == GamePhase.playing && r != null && r.showTimer && !r.isCalm && r.timeLimit > 0 && r.verdict == Verdict.pending) {
+    if (phase == GamePhase.playing &&
+        r != null &&
+        r.showTimer &&
+        !r.isCalm &&
+        r.timeLimit > 0 &&
+        r.verdict == Verdict.pending) {
       final f = r.timeLeft / r.timeLimit;
       if (f < 0.2) amp += (0.2 - f) / 0.2 * deadlineTremorPx;
     }
@@ -514,12 +547,9 @@ class ButtonPanicGame extends FlameGame {
     final timed = r.showTimer && r.timeLimit > 0;
     final pending = phase == GamePhase.playing && r.verdict == Verdict.pending;
     final f = timed ? (r.timeLeft / r.timeLimit).clamp(0.0, 1.0) : 1.0;
-    audio.musicSet(SoundtrackMix.at(
-      roundIndex: r.ctx.roundIndex,
-      timeFraction: pending ? f : 1.0,
-      timed: timed,
-      calm: r.isCalm,
-    ));
+    audio.musicSet(
+      SoundtrackMix.at(roundIndex: r.ctx.roundIndex, timeFraction: pending ? f : 1.0, timed: timed, calm: r.isCalm),
+    );
   }
 
   /// The beat. On the web the soundtrack is the beat and the arena pulses
@@ -743,13 +773,11 @@ class ButtonPanicGame extends FlameGame {
       lastResult = _buildResult(r, save: false);
       phase = GamePhase.fakeGameOver;
       _phaseTimer = Difficulty.fakeGameOverSeconds;
-      overlays.add('gameOver');
     } else {
       audio.musicStop();
       phase = GamePhase.gameOver;
       lastResult = _buildResult(r, save: true);
       if (e.mode != GameMode.story && !isPractice) leaderboards.runEnded(e.score);
-      overlays.add('gameOver');
     }
   }
 
@@ -774,12 +802,10 @@ class ButtonPanicGame extends FlameGame {
     );
     round = null;
     phase = GamePhase.gameOver;
-    overlays.add('gameOver');
   }
 
   /// ...then reveal you're still alive, and the clock is already running.
   void _revealTryAgain() {
-    overlays.remove('gameOver');
     audio.musicDuck(false); // same soundtrack, straight back in where it was
     audio.playReveal();
     haptics.chaos();
