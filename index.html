@@ -31,7 +31,19 @@
 
   <title>Button Panic</title>
   <meta name="theme-color" content="#111111">
-  <style>html,body{margin:0;background:#F4EEE2;}</style>
+  <style>
+    html,body{margin:0;background:#F4EEE2;}
+    /* Shown only while the game loads; removed on the first frame. */
+    #bp-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+      background:#F4EEE2 radial-gradient(#0000001a 1.2px,transparent 1.3px) 0 0/22px 22px;font-family:Impact,'Anton','Arial Narrow Bold',sans-serif;
+      transition:opacity .25s ease;z-index:0;pointer-events:none}
+    #bp-splash .t{font-size:clamp(44px,9vw,96px);line-height:.92;text-align:center;color:#111;transform:rotate(-2.5deg);letter-spacing:.5px}
+    #bp-splash .t b{display:block;color:#FF2E3F;font-weight:normal;text-shadow:4px 4px 0 #111}
+    #bp-splash .l{font:800 12px/1 system-ui,sans-serif;letter-spacing:2px;color:#6B655A;text-transform:uppercase}
+    #bp-splash .tape{position:absolute;left:0;right:0;height:16px;background:repeating-linear-gradient(-55deg,#111 0 12px,#FFD000 12px 35px);border-block:2px solid #111}
+    @media (prefers-reduced-motion: no-preference){#bp-splash .l{animation:bp-blink 1s steps(2,start) infinite}}
+    @keyframes bp-blink{to{visibility:hidden}}
+  </style>
   <script>
     // Old builds were cached by a service worker, so people kept seeing the
     // previous version. Remove any old worker and its caches.
@@ -351,6 +363,20 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <div id="bp-splash" aria-hidden="true">
+    <div class="tape" style="top:0"></div>
+    <div class="t">BUTTON<b>PANIC</b></div>
+    <div class="l">Loading the button</div>
+    <div class="tape" style="bottom:0"></div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var s = document.getElementById('bp-splash');
+      if (!s) return;
+      s.style.opacity = '0';
+      setTimeout(function () { s.remove(); }, 300);
+    });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
