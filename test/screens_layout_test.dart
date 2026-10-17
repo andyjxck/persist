@@ -131,7 +131,7 @@ void main() {
           final again = tester.getRect(find.byKey(const Key('againButton')));
           expect(again.bottom, lessThanOrEqualTo(size.height), reason: 'AGAIN visible at $size');
           expect(find.text('$score'), findsWidgets);
-          if (newBest) expect(find.text('NEW BEST!'), findsOneWidget);
+          if (newBest) expect(find.text('NEW BEST'), findsOneWidget);
           if (practice) expect(find.textContaining('NOT SAVED'), findsOneWidget);
         });
       }

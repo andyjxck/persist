@@ -18,13 +18,19 @@ double _distance(Color a, Color b) {
 }
 
 void main() {
-  group('Colour rounds stay readable on paper', () {
-    test('every button is outlined in ink that stands out from every background, and every colour stands out from its outline', () {
-      for (final bg in [BP.ink, BP.calmBg, BP.flood]) {
+  group('Colour rounds stay readable in the dark control room', () {
+    test('type stands out from every background, and every button colour stands out from its near-black rim and from every background', () {
+      const backgrounds = [BP.ink, BP.calmBg, BP.flood];
+      for (final bg in backgrounds) {
         expect(_contrast(BP.paper, bg), greaterThan(7), reason: '$bg');
       }
+      // The rim is the machined near-black edge every button is drawn with.
+      expect(BP.rim.computeLuminance(), lessThan(BP.ink.computeLuminance()), reason: 'rim must be darker than the background');
       for (final c in GameColour.all) {
-        expect(_contrast(c.color, BP.paper), greaterThan(3), reason: c.name);
+        expect(_contrast(c.color, BP.rim), greaterThan(3), reason: '${c.name} vs rim');
+        for (final bg in backgrounds) {
+          expect(_contrast(c.color, bg), greaterThan(3), reason: '${c.name} vs $bg');
+        }
       }
     });
 

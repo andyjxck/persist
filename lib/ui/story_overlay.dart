@@ -166,10 +166,15 @@ class _StoryOverlayState extends State<StoryOverlay> {
                   Text('$cleared/${storyLevels.length} SHIFTS CLEARED', style: BP.label(10, color: BP.onInk)),
                   const SizedBox(height: BP.s3),
                   Expanded(
-                    child: ListView(
+                    // All ten cards are built up front (not a lazy list), so
+                    // the next shift can always be scrolled into view, even
+                    // shift 10 on the smallest phone.
+                    child: SingleChildScrollView(
                       controller: _scroll,
-                      padding: EdgeInsets.zero,
-                      children: [for (final lv in storyLevels) _card(lv, cleared: cleared, wide: wide)],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [for (final lv in storyLevels) _card(lv, cleared: cleared, wide: wide)],
+                      ),
                     ),
                   ),
                   if (wide) ...[
