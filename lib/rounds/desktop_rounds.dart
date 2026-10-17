@@ -298,6 +298,7 @@ class MagnetRound extends Round {
   late final double speed;
   double? _cx;
   double? _cy;
+  bool _placed = false;
 
   @override
   String get instruction => "Don't let it touch your cursor";
@@ -321,6 +322,20 @@ class MagnetRound extends Round {
     final cx = _cx, cy = _cy;
     if (cx == null || cy == null) return;
     final a = ctx.aspect;
+    if (!_placed) {
+      // The cursor is usually still where the last round's button was, which
+      // is right where this one appears. Start it on the far side instead of
+      // catching the cursor before the player can read the instruction.
+      _placed = true;
+      final gx = (cx - button.x) * a;
+      final gy = cy - button.y;
+      if (math.sqrt(gx * gx + gy * gy) < button.radius + 0.3) {
+        final rx = button.radius / math.max(0.2, a);
+        button
+          ..x = (cx < 0.5 ? 0.88 : 0.12).clamp(rx, 1 - rx)
+          ..y = (cy < 0.5 ? 0.85 : 0.15).clamp(button.radius, 1 - button.radius);
+      }
+    }
     final dx = (cx - button.x) * a;
     final dy = cy - button.y;
     final d = math.sqrt(dx * dx + dy * dy);

@@ -20,7 +20,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
   ButtonPanicGame get game => widget.game;
 
   String _dailyLine() {
-    final daily = game.store.dailyFor(game.clock());
+    final daily = game.store.dailyFor(game.clock(), variant: game.dailyVariant);
     return daily == null ? 'TODAY\'S DAILY RUN' : 'TODAY ${daily.firstScore}  \u00b7  BEST ${daily.bestScore}';
   }
 

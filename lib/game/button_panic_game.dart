@@ -204,6 +204,8 @@ class ButtonPanicGame extends FlameGame {
 
   void startRun(GameMode mode) {
     final now = clock();
+    _runStarted = now;
+    _runVariant = dailyVariant;
     final platform = layoutPlatform;
     final e = mode == GameMode.daily
         ? RunEngine.daily(now, platform: platform, multiTouch: multiTouch)
@@ -665,16 +667,26 @@ class ButtonPanicGame extends FlameGame {
     _showBanner('TRY AGAIN  ·  LESS TIME', '', 1.4, alarm: true);
   }
 
+  /// When the current run started. A Daily is scored against the day it was
+  /// started on, even if it ends after midnight.
+  DateTime? _runStarted;
+  String _runVariant = '';
+
+  /// Which Daily this device plays right now: the desktop one, the phone one,
+  /// or the phone one without the two-thumb round. Each has its own rounds,
+  /// so each keeps its own score.
+  String get dailyVariant => layoutPlatform == PlayPlatform.desktop ? 'desktop' : (multiTouch ? '' : 'mouse');
+
   RunResult _buildResult(Round r, {required bool save}) {
     final e = engine!;
-    final now = clock();
+    final now = e.mode == GameMode.daily ? (_runStarted ?? clock()) : clock();
     final score = e.score;
     if (isPractice) save = false; // practice and demo runs never count
     if (e.mode == GameMode.daily) {
-      final existing = store.dailyFor(now);
+      final existing = store.dailyFor(now, variant: _runVariant);
       final best = math.max(existing?.bestScore ?? 0, score);
       final isNewBest = existing != null && score > existing.bestScore;
-      if (save) store.recordDaily(now, score);
+      if (save) store.recordDaily(now, score, variant: _runVariant);
       return RunResult(
         mode: e.mode,
         score: score,

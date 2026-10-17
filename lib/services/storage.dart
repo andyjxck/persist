@@ -38,29 +38,39 @@ class ScoreStore {
     return false;
   }
 
+  /// Each version of the game has its own Daily (different rounds), so each
+  /// keeps its own result. [variant] '' is the phone version, which keeps the
+  /// original keys.
+  static String _k(String key, String variant) => variant.isEmpty ? key : '${key}_$variant';
+
   /// The stored Daily result if it is for [today], else null.
-  DailyResult? dailyFor(DateTime today) {
+  DailyResult? dailyFor(DateTime today, {String variant = ''}) {
     final key = dateKey(today);
-    if (_prefs.getString(_dailyDate) != key) return null;
+    if (_prefs.getString(_k(_dailyDate, variant)) != key) return null;
     return DailyResult(
       date: key,
-      firstScore: _prefs.getInt(_dailyFirst) ?? 0,
-      bestScore: _prefs.getInt(_dailyBest) ?? 0,
+      firstScore: _prefs.getInt(_k(_dailyFirst, variant)) ?? 0,
+      bestScore: _prefs.getInt(_k(_dailyBest, variant)) ?? 0,
     );
   }
 
   /// Saves a Daily score. Returns the updated result.
-  Future<DailyResult> recordDaily(DateTime today, int score) async {
-    final existing = dailyFor(today);
+  Future<DailyResult> recordDaily(DateTime today, int score, {String variant = ''}) async {
+    final existing = dailyFor(today, variant: variant);
     final key = dateKey(today);
+    // Never let an older day's run overwrite a newer day's result.
+    final stored = _prefs.getString(_k(_dailyDate, variant));
+    if (stored != null && stored.compareTo(key) > 0) {
+      return DailyResult(date: key, firstScore: score, bestScore: score);
+    }
     final result = DailyResult(
       date: key,
       firstScore: existing?.firstScore ?? score,
       bestScore: existing == null || score > existing.bestScore ? score : existing.bestScore,
     );
-    await _prefs.setString(_dailyDate, key);
-    await _prefs.setInt(_dailyFirst, result.firstScore);
-    await _prefs.setInt(_dailyBest, result.bestScore);
+    await _prefs.setString(_k(_dailyDate, variant), key);
+    await _prefs.setInt(_k(_dailyFirst, variant), result.firstScore);
+    await _prefs.setInt(_k(_dailyBest, variant), result.bestScore);
     return result;
   }
 
