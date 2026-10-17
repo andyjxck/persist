@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/painting.dart';
 
+import '../logic/run_engine.dart';
 import '../rounds/round.dart';
 import '../ui/theme.dart';
 import 'arena_layout.dart';
@@ -49,7 +50,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
   Rect get playRect => layout.playRect;
 
   /// Where announcements go (see [ArenaLayout.bannerRect]).
-  Rect get bannerRect => layout.bannerRect(_hudTp(game.round).width);
+  Rect get bannerRect => layout.bannerRect(_hudWidth(game.round));
 
   double get aspect => playRect.width / math.max(1, playRect.height);
 
@@ -284,14 +285,62 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
 
   // --- HUD -------------------------------------------------------------------
 
-  /// The HUD: a black bar across the top with the round number in hazard
-  /// yellow, and hazard tape under it.
+  /// The HUD: a black bar across the top with hazard tape under it. On the
+  /// left a quiet ROUND label and the number on a hazard tag; on the wide
+  /// stage the mode (or MUTED) sits on the right, inside the same width so
+  /// announcements keep their room.
   void _drawHud(Canvas canvas, Round round) {
-    final bar = Rect.fromLTWH(-40, -40, _screen.width + 80, hudHeight - 12 + 40);
+    final barH = hudHeight - 12;
+    final bar = Rect.fromLTWH(-40, -40, _screen.width + 80, barH + 40);
     canvas.drawRect(bar, _fill..color = BP.paper);
-    _drawTape(canvas, Rect.fromLTWH(-40, hudHeight - 12, _screen.width + 80, 8));
-    final tp = _hudTp(round);
-    tp.paint(canvas, Offset(columnRect.left + _pad, (hudHeight - 12) / 2 - tp.height / 2));
+    _drawTape(canvas, Rect.fromLTWH(-40, barH, _screen.width + 80, 8));
+    canvas.drawRect(Rect.fromLTWH(-40, barH, _screen.width + 80, 1.5), _fill..color = BP.paper);
+
+    final (label, number, practice) = _hudParts(round);
+    final midY = barH / 2;
+    var x = columnRect.left + _pad;
+    label.paint(canvas, Offset(x, midY - label.height / 2 + 1));
+    x += label.width + 8;
+    final tag = Rect.fromLTWH(x, midY - number.height / 2 - 1, number.width + 14, number.height + 2);
+    canvas.drawRRect(RRect.fromRectAndRadius(tag, const Radius.circular(5)), _fill..color = BP.hazard);
+    number.paint(canvas, Offset(x + 7, midY - number.height / 2));
+    x = tag.right + 10;
+    if (practice != null) {
+      final chip = Rect.fromLTWH(x, midY - practice.height / 2 - 4, practice.width + 14, practice.height + 8);
+      canvas.drawRRect(RRect.fromRectAndRadius(chip, const Radius.circular(4)), _stroke
+        ..strokeWidth = 1.5
+        ..color = BP.onInk);
+      practice.paint(canvas, Offset(x + 7, midY - practice.height / 2));
+    }
+
+    if (wide) {
+      final width = _hudWidth(round);
+      final muted = !game.audio.enabled;
+      final mode = game.engine?.mode == GameMode.daily ? 'DAILY' : 'ENDLESS';
+      var tp = _tp(TextSpan(text: muted ? '$mode  \u00b7  MUTED' : mode, style: BP.label(11, color: muted ? BP.signal : BP.onInk)), 400, maxLines: 1, align: TextAlign.left);
+      if (tp.width > width && muted) {
+        tp = _tp(TextSpan(text: 'MUTED', style: BP.label(11, color: BP.signal)), 400, maxLines: 1, align: TextAlign.left);
+      }
+      if (tp.width <= width) tp.paint(canvas, Offset(columnRect.right - _pad - tp.width, midY - tp.height / 2));
+    }
+  }
+
+  (TextPainter, TextPainter, TextPainter?) _hudParts(Round? round) {
+    final n = ((round?.ctx.roundIndex ?? 0) + 1).toString().padLeft(2, '0');
+    final label = _tp(TextSpan(text: 'ROUND', style: BP.label(wide ? 12 : 11, color: BP.onInk)), 200, maxLines: 1, align: TextAlign.left);
+    final number = _tp(TextSpan(text: n, style: BP.d(wide ? 26 : 22, color: BP.paper, spacing: 1)), 200, maxLines: 1, align: TextAlign.left);
+    final practice = game.isPractice
+        ? _tp(TextSpan(text: 'PRACTICE', style: BP.label(10, color: BP.onInk)), 200, maxLines: 1, align: TextAlign.left)
+        : null;
+    return (label, number, practice);
+  }
+
+  /// How wide the round number block is, for the announcement strip.
+  double _hudWidth(Round? round) {
+    final (label, number, practice) = _hudParts(round);
+    var w = label.width + 8 + number.width + 14;
+    if (practice != null) w += 10 + practice.width + 14;
+    return w;
   }
 
   /// Diagonal black and yellow hazard stripes filling [r].
@@ -311,12 +360,6 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     }
     canvas.drawPath(path, _fill..color = BP.paper);
     canvas.restore();
-  }
-
-  TextPainter _hudTp(Round? round) {
-    final n = ((round?.ctx.roundIndex ?? 0) + 1).toString().padLeft(2, '0');
-    final text = game.isPractice ? 'ROUND $n  PRACTICE' : 'ROUND $n';
-    return _tp(TextSpan(text: text, style: BP.d(wide ? 26 : 22, color: BP.hazard, spacing: 1)), 240, maxLines: 1, align: TextAlign.left);
   }
 
   // --- Instruction -------------------------------------------------------------
@@ -374,13 +417,23 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
     final hint = round.hint;
     final dim = game.phase == GamePhase.roundWon;
     final tp = _instruction(round, r, dim);
+    // The hint sits on a small black tag under the instruction, so it reads
+    // as a footnote and never competes with the instruction itself.
     final hintTp = hint.isEmpty
         ? null
-        : _tp(TextSpan(text: hint.toUpperCase(), style: BP.label(wide ? 13 : 12, color: BP.muted)), r.width, maxLines: 1);
-    final total = tp.height + (hintTp == null ? 0 : hintTp.height + 10);
+        : _tp(TextSpan(text: hint.toUpperCase(), style: BP.label(wide ? 12 : 11, color: round.isCalm ? BP.calmBg : BP.cream)), r.width - 20, maxLines: 1);
+    final total = tp.height + (hintTp == null ? 0 : hintTp.height + 16);
     final top = r.center.dy - total / 2;
     tp.paint(canvas, Offset(r.center.dx - tp.width / 2, top));
-    hintTp?.paint(canvas, Offset(r.center.dx - hintTp.width / 2, top + tp.height + 10));
+    if (hintTp != null) {
+      final y = top + tp.height + 10;
+      final tag = Rect.fromLTWH(r.center.dx - hintTp.width / 2 - 9, y, hintTp.width + 18, hintTp.height + 6);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(tag, const Radius.circular(4)),
+        _fill..color = round.isCalm ? BP.calm : BP.paper,
+      );
+      hintTp.paint(canvas, Offset(tag.left + 9, y + 3));
+    }
   }
 
   // --- Buttons ---------------------------------------------------------------
@@ -421,6 +474,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
   final Paint _fill = Paint();
   final Paint _stroke = Paint()..style = PaintingStyle.stroke;
   final Paint _shine = Paint()..color = const Color(0x59FFFFFF);
+  static const _ground = Color(0x24000000);
 
   /// An arcade button: a thick black outline, a darker skirt underneath and
   /// a face that physically sinks into it when pressed, with one flat shine.
@@ -437,6 +491,8 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
         ..color = BP.paper.withValues(alpha: hover));
     }
     if (depth > 0) {
+      // A hard, flat shadow on the paper so the button sits on the page.
+      canvas.drawCircle(centre.translate(r * 0.08, depth * 0.5 + r * 0.1), r, _fill..color = _ground);
       final skirt = centre.translate(0, depth * 0.5);
       canvas.drawCircle(skirt, r, _fill..color = BP.shade(face, 0.42));
       canvas.drawCircle(skirt, r, _stroke
@@ -482,6 +538,7 @@ class ArenaComponent extends Component with HasGameReference<ButtonPanicGame> {
         ..color = BP.paper.withValues(alpha: hover));
     }
     if (depth > 0) {
+      canvas.drawRRect(RRect.fromRectAndRadius(cap.shift(Offset(r * 0.08, depth * 0.5 + r * 0.1)), radius), _fill..color = _ground);
       final under = RRect.fromRectAndRadius(Rect.fromLTRB(cap.left, topRect.top, cap.right, cap.bottom + depth * 0.5), radius);
       canvas.drawRRect(under, _fill..color = BP.shade(face, 0.42));
       canvas.drawRRect(under, _stroke

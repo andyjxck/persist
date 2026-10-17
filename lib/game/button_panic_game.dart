@@ -772,14 +772,21 @@ class ButtonPanicGame extends FlameGame {
   // Settings
   // ---------------------------------------------------------------------------
 
+  /// Bumps when sound or vibration is switched, so every switch on screen
+  /// (menu chips, the phone's corner switch) shows the same state, including
+  /// after M is pressed on the keyboard.
+  final ValueNotifier<int> settingsRevision = ValueNotifier(0);
+
   void setSound(bool on) {
     audio.enabled = on;
     store.setSoundOn(on);
+    settingsRevision.value++;
   }
 
   void setHaptics(bool on) {
     haptics.enabled = on;
     store.setHapticsOn(on);
+    settingsRevision.value++;
   }
 
   @visibleForTesting

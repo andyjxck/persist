@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/painting.dart';
 
 /// The one visual identity: a warning label that is losing its temper.
@@ -26,6 +29,12 @@ class BP {
   static const flood = Color(0xFFFFB3BA); // the rising panic
   static const calm = Color(0xFF2F4D6E); // calm rounds: cold, not cheerful
   static const calmBg = Color(0xFFDDE6EE);
+
+  // Supporting tones for the overhauled screens.
+  static const cream = Color(0xFFFFF8EA); // card faces and light type on ink
+  static const blood = Color(0xFFC81E2E); // the deep red under red: shadows, stripes
+  static const inkSoft = Color(0xFF2A2621); // panels inside black bars
+  static const onInk = Color(0xFFB9B0A0); // quiet labels on black
 
   static const display = 'Anton';
   static const text = 'Manrope';
@@ -65,4 +74,24 @@ class BP {
 
   static Color shade(Color c, double amount) => Color.lerp(c, const Color(0xFF000000), amount)!;
   static Color tint(Color c, double amount) => Color.lerp(c, const Color(0xFFFFFFFF), amount)!;
+
+  /// Card corners and slab corners.
+  static const radius = 10.0;
+
+  /// A printed-paper halftone: one tiny tile of dots, repeated by a shader
+  /// so the whole screen costs a single rectangle fill. Built once.
+  static final Map<Color, Paint> _dotPaints = {};
+  static final _identity = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+  /// Paint that fills an area with halftone dots of [dot] (alpha included).
+  static Paint dots(Color dot) => _dotPaints.putIfAbsent(dot, () {
+    const s = 22.0;
+    final rec = ui.PictureRecorder();
+    final c = Canvas(rec);
+    final p = Paint()..color = dot;
+    c.drawCircle(const Offset(s * 0.25, s * 0.25), 1.2, p);
+    c.drawCircle(const Offset(s * 0.75, s * 0.75), 1.2, p);
+    final tile = rec.endRecording().toImageSync(s.toInt(), s.toInt());
+    return Paint()..shader = ImageShader(tile, TileMode.repeated, TileMode.repeated, _identity);
+  });
 }

@@ -110,9 +110,9 @@ class _PhoneShellState extends State<_PhoneShell> {
           children: [
             // Its own layer: the game repaints every frame, the shell doesn't.
             Positioned.fill(child: RepaintBoundary(child: GameStage(game: game, gameKey: widget.gameKey))),
-            ValueListenableBuilder<int>(
-              valueListenable: game.revision,
-              builder: (context, _, _) {
+            ListenableBuilder(
+              listenable: Listenable.merge([game.revision, game.settingsRevision]),
+              builder: (context, _) {
                 final inPlay = game.phase != GamePhase.menu && game.phase != GamePhase.gameOver && game.phase != GamePhase.fakeGameOver;
                 if (!inPlay) return const SizedBox.shrink();
                 return Positioned(
@@ -122,9 +122,9 @@ class _PhoneShellState extends State<_PhoneShell> {
                     look: ActionLook.chip,
                     label: game.audio.enabled ? 'SOUND' : 'MUTED',
                     size: 10,
-                    color: BP.hazard,
-                    semantic: 'Sound',
-                    onTap: () => setState(() => game.setSound(!game.audio.enabled)),
+                    color: game.audio.enabled ? BP.hazard : BP.onInk,
+                    semantic: game.audio.enabled ? 'Sound on' : 'Sound off',
+                    onTap: () => game.setSound(!game.audio.enabled),
                   ),
                 );
               },
