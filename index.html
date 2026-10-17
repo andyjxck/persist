@@ -55,7 +55,8 @@
 
     // Sound: one Web Audio context, unlocked inside the first touch, click
     // or key press (mobile browsers refuse to play before that), with every
-    // sound decoded up front so a press plays instantly.
+    // sound decoded up front so a press plays instantly. The soundtrack
+    // (bpSound.music) plays through the same context.
     window.bpSound = (function () {
       var ctx = null, bufs = {}, loading = false;
       var names = ['tick', 'tock', 'tick_tight', 'tock_tight', 'press', 'clear', 'fail', 'reveal', 'glitch', 'buzz'];
@@ -91,11 +92,246 @@
           s.start(0);
         } catch (e) {}
         load();
+        if (music) music.unlocked();
       }
       ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(function (e) {
         document.addEventListener(e, unlock, { capture: true, passive: true });
       });
+      // The soundtrack: one driving loop synthesised live (no files), started
+      // once per run and never restarted by a new round. The game only tells
+      // it how hard to push (tempo, layers, key, panic as the timer runs
+      // low); notes are scheduled a moment ahead on the audio clock, so the
+      // beat stays steady even when a frame is slow.
+      var music = (function () {
+        var playing = false, pending = false, starts = 0, stops = 0, enabled = true, ducked = false, hidden = false;
+        var timer = null, killTimer = null, noise = null;
+        var master = null, comp = null, tone = null, bassF = null, leadF = null, droneG = null, droneF = null, riserF = null, riserG = null, cont = [];
+        var nextT = 0, step = 0, beats = [];
+        var bpm = 116, tBpm = 116, tier = 0, key = 0, pendKey = 0, urg = 0, tUrg = 0, calm = false;
+        var LOOK = 0.14, VOL = 0.4, ROOT = 40; // E2: low enough to drive, high enough for a phone speaker
+        var PROG = [0, 1, 0, -2];             // four bars: home, a semitone up, home, down a tone
+        var BASS = [0, -1, 0, -1, 12, -1, 0, -1, 0, -1, 0, -1, 12, -1, 7, -1];
+        var ARP = [0, 3, 7, 12, 15, 12, 7, 3];
+        var CUT = [650, 850, 1050, 1250, 1450, 1800];
+        var DRONE = [0.03, 0.035, 0.04, 0.045, 0.06, 0.07];
+
+        function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+        function noiseBuf(c) {
+          if (noise) return noise;
+          var n = c.sampleRate, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+          for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+          return (noise = b);
+        }
+        function env(g, t, peak, a, d) {
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(peak, t + a);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+        }
+        function burst(t, dest, type, freq, q, v, len) {
+          var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+          s.buffer = noise; f.type = type; f.frequency.value = freq; f.Q.value = q;
+          env(g, t, v, 0.001, len);
+          s.connect(f); f.connect(g); g.connect(dest);
+          s.start(t, Math.random() * 0.8, len + 0.02);
+        }
+        // Held notes: swell in, sag, then let go right at the end, so the
+        // line keeps driving with no gaps between notes.
+        function envHeld(g, t, peak, a, len) {
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(peak, t + a);
+          g.gain.exponentialRampToValueAtTime(peak * 0.4, t + len * 0.75);
+          g.gain.linearRampToValueAtTime(0.0001, t + len);
+        }
+        function osc(t, dest, type, freq, v, a, len, held) {
+          var o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = type; o.frequency.value = freq;
+          if (held) envHeld(g, t, v, a, len); else env(g, t, v, a, len);
+          o.connect(g); g.connect(dest);
+          o.start(t); o.stop(t + a + len + 0.03);
+          return o;
+        }
+        function kick(t, v) {
+          var o = osc(t, tone, 'sine', 190, v, 0.003, 0.22);
+          o.frequency.setValueAtTime(190, t);
+          o.frequency.exponentialRampToValueAtTime(50, t + 0.13);
+          burst(t, tone, 'bandpass', 3000, 0.8, v * 0.3, 0.018); // the click a phone speaker can hear
+        }
+        function hat(t, v, len) { burst(t, tone, 'highpass', 7500, 0.7, v, len); }
+        function clap(t, v) {
+          burst(t, tone, 'bandpass', 1500, 1.1, v, 0.05);
+          burst(t + 0.014, tone, 'bandpass', 1500, 1.1, v * 0.9, 0.16);
+        }
+        function bass(t, m, v, len) {
+          osc(t, bassF, 'sawtooth', mtof(m), v, 0.004, len, true);
+          osc(t, bassF, 'square', mtof(m - 12), v * 0.45, 0.004, len, true);
+        }
+        function lead(t, m, v, len) { osc(t, leadF, 'square', mtof(m), v, 0.003, len); }
+        function ping(t, m, v) {
+          osc(t, master, 'sine', mtof(m), v, 0.002, 0.11);
+          osc(t, master, 'triangle', mtof(m + 12), v * 0.4, 0.002, 0.06);
+        }
+
+        function build(c) {
+          noiseBuf(c);
+          comp = c.createDynamicsCompressor();
+          comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
+          comp.connect(c.destination);
+          master = c.createGain(); master.gain.value = 0.0001; master.connect(comp);
+          tone = c.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 16000; tone.Q.value = 0.5; tone.connect(master);
+          bassF = c.createBiquadFilter(); bassF.type = 'lowpass'; bassF.frequency.value = CUT[0]; bassF.Q.value = 6; bassF.connect(tone);
+          leadF = c.createBiquadFilter(); leadF.type = 'lowpass'; leadF.frequency.value = 2600; leadF.Q.value = 2; leadF.connect(tone);
+          // Drone: saws a semitone apart, always running under everything,
+          // louder and brighter as the run goes on.
+          droneG = c.createGain(); droneG.gain.value = 0;
+          var df = c.createBiquadFilter(); df.type = 'lowpass'; df.frequency.value = 700; df.Q.value = 1.5; droneF = df;
+          df.connect(droneG); droneG.connect(tone);
+          [0, 1, 12.1].forEach(function (iv) {
+            var o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(ROOT + 12 + iv);
+            o.connect(df); o.start(); o._iv = iv; cont.push(o);
+          });
+          // Riser: rushing noise that climbs as the timer runs out.
+          var rs = c.createBufferSource(); rs.buffer = noise; rs.loop = true;
+          riserF = c.createBiquadFilter(); riserF.type = 'bandpass'; riserF.frequency.value = 400; riserF.Q.value = 3;
+          riserG = c.createGain(); riserG.gain.value = 0;
+          rs.connect(riserF); riserF.connect(riserG); riserG.connect(master); rs.start(); cont.push(rs);
+        }
+        function teardown() {
+          if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+          cont.forEach(function (n) { try { n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} });
+          cont = [];
+          try { if (comp) comp.disconnect(); } catch (e) {}
+          master = comp = tone = bassF = leadF = droneG = droneF = riserF = riserG = null;
+        }
+
+        function level() { return enabled && !ducked && !hidden ? VOL * (1 + 0.22 * urg) : 0.0001; }
+        function mix(t) {
+          var tc = 0.08;
+          master.gain.setTargetAtTime(level(), t, ducked ? 0.12 : tc);
+          tone.frequency.setTargetAtTime(calm ? 520 : 16000, t, 0.25);
+          bassF.frequency.setTargetAtTime(CUT[tier] + urg * 2600, t, tc);
+          leadF.frequency.setTargetAtTime(2200 + urg * 3000, t, tc);
+          droneG.gain.setTargetAtTime(DRONE[tier] + urg * 0.05, t, 0.6);
+          droneF.frequency.setTargetAtTime(700 + tier * 120 + urg * 1500, t, 0.3);
+          riserF.frequency.setTargetAtTime(400 + urg * urg * 4200, t, tc);
+          riserG.gain.setTargetAtTime(calm ? 0 : urg * urg * 0.16, t, tc);
+        }
+        function retune(t) {
+          cont.forEach(function (o) {
+            if (o._iv !== undefined) o.frequency.setTargetAtTime(mtof(ROOT + 12 + key + o._iv), t, 0.05);
+          });
+        }
+
+        function playStep(s, t, sp) {
+          var i = s % 16, bar = Math.floor(s / 16) % 4, root = ROOT + key + PROG[bar];
+          if (i === 0 && key !== pendKey) { key = pendKey; root = ROOT + key + PROG[bar]; retune(t); }
+          mix(t);
+          if (i % 4 === 0) { beats.push(t); if (beats.length > 8) beats.shift(); }
+          var hot = !calm;
+          // Kick: four on the floor; pushier from tier 5.
+          if (i % 4 === 0) kick(t, calm ? 0.45 : 0.9);
+          if (hot && tier >= 5 && (i === 3 || i === 14)) kick(t, 0.55);
+          // Bass: eighths, sixteenths from tier 2.
+          var n = BASS[i];
+          if (n >= 0) bass(t, root + n, 0.22, sp * (tier >= 2 ? 1 : 2));
+          else if (hot && tier >= 2) bass(t, root, 0.14, sp);
+          if (!hot) return;
+          // Hats: a ticking clock on every eighth, sixteenths from tier 2 or
+          // as time runs low, rolls right at the end.
+          var hv = 0.07 + urg * 0.05;
+          if (tier >= 2 || urg > 0.3) hat(t, i % 2 ? hv * 0.7 : hv, 0.03);
+          else if (i % 2 === 0) hat(t, i % 4 === 2 ? hv : hv * (tier >= 1 ? 0.8 : 0.55), 0.04);
+          if (urg > 0.75) hat(t + sp / 2, hv * 0.6, 0.02);
+          // Clap on 2 and 4 once the chaos starts.
+          if (tier >= 2 && (i === 4 || i === 12)) clap(t, 0.32);
+          // Arpeggio from tier 3, doubled an octave up from tier 5.
+          if (tier >= 3) {
+            var a = ROOT + 24 + key + PROG[bar] + ARP[i % 8];
+            lead(t, a, 0.045 + urg * 0.03, sp * 0.7);
+            if (tier >= 5 && i % 2 === 0) lead(t, a + 12, 0.025, sp * 0.5);
+          }
+          // Alarm: a two-note ping on the beat as the timer runs out, every eighth at the end.
+          if (urg > 0.45 && (i % 4 === 0 || (urg > 0.8 && i % 2 === 0))) ping(t, 88 + key + ((s >> 1) % 2 ? -1 : 0), 0.05 + urg * 0.07);
+        }
+
+        function pump() {
+          if (!playing || !ctx || !master) return;
+          if (ctx.state !== 'running') return; // audio not unlocked yet: wait for the first tap
+          var now = ctx.currentTime;
+          if (nextT < now - 0.03) nextT = now + 0.03; // fell behind (tab in the background): skip, keep counting
+          while (nextT < now + LOOK) {
+            var sp = 60 / bpm / 4;
+            playStep(step, nextT, sp);
+            nextT += sp;
+            step++;
+            bpm += (tBpm - bpm) * 0.06;                      // tempo glides up, no jumps
+            urg += (tUrg - urg) * (tUrg > urg ? 0.5 : 0.12); // panic comes fast, eases off slowly
+          }
+        }
+
+        function begin() {
+          var c = ctx;
+          if (master) teardown(); // the last run's fade-out was still finishing
+          build(c);
+          playing = true; starts++;
+          step = 0; beats = []; nextT = c.currentTime + 0.06;
+          bpm = tBpm; key = pendKey; urg = tUrg;
+          retune(c.currentTime);
+          timer = setInterval(pump, 25);
+          pump();
+        }
+
+        document.addEventListener('visibilitychange', function () {
+          hidden = document.hidden;
+          if (master && ctx) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.05);
+        });
+
+        return {
+          start: function () {
+            if (playing || pending) return; // never restart a soundtrack that's already playing
+            ducked = false;
+            tBpm = 116; tier = 0; pendKey = 0; tUrg = 0; calm = false;
+            // Audio isn't unlocked until the first tap: start the moment it is.
+            if (!ctx) { pending = true; return; }
+            begin();
+          },
+          unlocked: function () {
+            if (pending && ctx) { pending = false; begin(); }
+          },
+          stop: function () {
+            pending = false;
+            if (!playing) return;
+            playing = false; stops++;
+            clearInterval(timer); timer = null;
+            if (master && ctx) master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+            killTimer = setTimeout(teardown, 900);
+          },
+          duck: function (down) {
+            ducked = !!down;
+            if (master && ctx) master.gain.setTargetAtTime(level(), ctx.currentTime, ducked ? 0.12 : 0.01);
+          },
+          enable: function (on) {
+            enabled = !!on;
+            if (master && ctx) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.03);
+          },
+          set: function (b, t, k, u, c) {
+            tBpm = b; tier = t; pendKey = k; tUrg = u; calm = !!c;
+            if (step === 0) { bpm = tBpm; key = pendKey; if (ctx) retune(ctx.currentTime); }
+            pump();
+          },
+          beatAge: function () {
+            if (!playing || !ctx) return -1;
+            var now = ctx.currentTime;
+            for (var i = beats.length - 1; i >= 0; i--) if (beats[i] <= now) return now - beats[i];
+            return -1;
+          },
+          stats: function () {
+            return { playing: playing, starts: starts, stops: stops, step: step, bpm: bpm, targetBpm: tBpm, tier: tier, key: key, urgency: urg,
+                     ducked: ducked, calm: calm, time: ctx ? ctx.currentTime : 0, state: ctx ? ctx.state : 'none' };
+          }
+        };
+      })();
       return {
+        music: music,
         play: function (n, v) {
           if (!ctx) return;
           if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
